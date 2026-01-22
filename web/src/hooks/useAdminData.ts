@@ -1,0 +1,870 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { addClient, deleteClient, getClientHistory, getClients } from '../clientService';
+import { addScheduleItem, deleteScheduleByClient, getScheduleItems } from '../scheduleService';
+import { addDriver, deleteDriver, getDrivers } from '../driverService';
+import { addAdmin, deleteAdmin, getAdmins } from '../adminService';
+import { getOpenIncidents } from '../incidentService';
+import {
+  addRegistryEntry,
+  deleteRegistryEntry,
+  getRegistryEntries,
+  updateRegistryEntry
+} from '../clientsRegistryService';
+import type { Client, ClientHistoryEntry, ClientRegistryEntry, Driver, Incident, ScheduleItem } from '../types';
+
+type ClientWithSchedule = Client & { nextVisitDate?: string | null };
+
+const startOfDay = (date: Date) => {
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+  return normalized;
+};
+
+const isSameDay = (d1: Date, d2: Date) => startOfDay(d1).getTime() === startOfDay(d2).getTime();
+
+interface PhotonFeature {
+  properties?: {
+    name?: string;
+    street?: string;
+    housenumber?: string;
+    city?: string;
+    postcode?: string;
+    country?: string;
+    countrycode?: string;
+  };
+}
+
+const buildPhotonLabel = (feature: PhotonFeature) => {
+  const props = feature.properties ?? {};
+  const parts: string[] = [];
+
+  if (props.name) parts.push(props.name);
+  if (props.street && props.street !== props.name) parts.push(props.street);
+  if (props.housenumber) parts.push(props.housenumber);
+
+  const locality = [props.city, props.postcode].filter(Boolean).join(' ');
+  if (locality) parts.push(locality);
+  if (props.country) parts.push(props.country);
+
+  return parts.join(', ').trim();
+};
+
+const preferCyrillicLabel = (label: string) => /[\u0400-\u04FF]/.test(label);
+
+const fetchPhotonSuggestions = async (query: string) => {
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&lang=de`;
+  const response = await fetch(url);
+  if (!response.ok) return [];
+
+  const payload = (await response.json()) as { features?: PhotonFeature[] };
+  const features = Array.isArray(payload.features) ? payload.features : [];
+  const mapped = features
+    .map(feature => {
+      const label = buildPhotonLabel(feature);
+      const country = feature.properties?.country?.toLowerCase();
+      const countryCode = feature.properties?.countrycode?.toLowerCase();
+      return { label, country, countryCode };
+    })
+    .filter(item => item.label);
+
+  const bulgarian = mapped.filter(item => item.country === 'bulgaria' || item.countryCode === 'bg');
+  const preferred = bulgarian.length > 0 ? bulgarian : mapped;
+  const unique = Array.from(new Set(preferred.map(item => item.label)));
+
+  return unique
+    .sort((a, b) => Number(preferCyrillicLabel(b)) - Number(preferCyrillicLabel(a)))
+    .slice(0, 5);
+};
+
+export function useAdminData(isMasterAdmin: boolean) {
+  const [currentView, setCurrentView] = useState<'clients' | 'drivers' | 'admins'>('clients');
+  const [clientManagementTab, setClientManagementTab] = useState<'registry' | 'daily'>('daily');
+
+  const [clients, setClients] = useState<ClientWithSchedule[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [clientsError, setClientsError] = useState<string | null>(null);
+  const [clientSubmitting, setClientSubmitting] = useState(false);
+  const [clientForm, setClientForm] = useState({
+    egn: '',
+    name: '',
+    address: '',
+    phone: '',
+    notes: '',
+    assignedDriverId: '',
+    serviceDate: '',
+    mealType: 'Стандартно меню',
+    mealCount: '1'
+  });
+  const [clientDeletingId, setClientDeletingId] = useState<string | null>(null);
+
+  const [registryEntries, setRegistryEntries] = useState<ClientRegistryEntry[]>([]);
+  const [registryLoading, setRegistryLoading] = useState(false);
+  const [registryError, setRegistryError] = useState<string | null>(null);
+  const [registrySubmitting, setRegistrySubmitting] = useState(false);
+  const [registryDeletingId, setRegistryDeletingId] = useState<string | null>(null);
+  const [registryEditingId, setRegistryEditingId] = useState<string | null>(null);
+  const [registryForm, setRegistryForm] = useState({
+    egn: '',
+    name: '',
+    address: '',
+    phone: '',
+    defaultMealType: 'Стандартно меню',
+    defaultMealCount: '1'
+  });
+
+  const [registrySearch, setRegistrySearch] = useState('');
+  const [selectedRegistryEntryId, setSelectedRegistryEntryId] = useState<string | null>(null);
+  const [registryAddressSuggestions, setRegistryAddressSuggestions] = useState<string[]>([]);
+  const [showRegistryAddressSuggestions, setShowRegistryAddressSuggestions] = useState(false);
+
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileEntry, setProfileEntry] = useState<ClientRegistryEntry | null>(null);
+  const [profileHistory, setProfileHistory] = useState<ClientHistoryEntry[]>([]);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileSearch, setProfileSearch] = useState('');
+  const [isProfileSearchOpen, setIsProfileSearchOpen] = useState(false);
+
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [driversLoading, setDriversLoading] = useState(false);
+  const [driversError, setDriversError] = useState<string | null>(null);
+  const [driverSubmitting, setDriverSubmitting] = useState(false);
+  const [driverForm, setDriverForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    routeArea: '',
+    selectedCity: ''
+  });
+  const [driverDeletingId, setDriverDeletingId] = useState<string | null>(null);
+
+  const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
+  const [showReport, setShowReport] = useState(false);
+  const [reportGenerating, setReportGenerating] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  const [admins, setAdmins] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [adminsLoading, setAdminsLoading] = useState(false);
+  const [adminsError, setAdminsError] = useState<string | null>(null);
+  const [adminSubmitting, setAdminSubmitting] = useState(false);
+  const [adminDeletingId, setAdminDeletingId] = useState<string | null>(null);
+  const [adminForm, setAdminForm] = useState({ name: '', email: '' });
+
+  const [openIncidents, setOpenIncidents] = useState<Incident[]>([]);
+
+  const [isSignaturePreviewOpen, setIsSignaturePreviewOpen] = useState(false);
+  const [signaturePreviewDriverUrl, setSignaturePreviewDriverUrl] = useState<string | null>(null);
+  const [signaturePreviewClientUrl, setSignaturePreviewClientUrl] = useState<string | null>(null);
+
+  const fetchOpenIncidents = useCallback(async () => {
+    try {
+      const data = await getOpenIncidents();
+      setOpenIncidents(data);
+    } catch (err) {
+      console.error('Неуспешно зареждане на инциденти.', err);
+      setOpenIncidents([]);
+    }
+  }, []);
+
+  const fetchScheduleItems = useCallback(async () => {
+    try {
+      const data = await getScheduleItems();
+      setScheduleItems(data);
+    } catch (err) {
+      console.error('Неуспешно зареждане на графика.', err);
+    }
+  }, []);
+
+  const fetchDrivers = useCallback(async () => {
+    setDriversLoading(true);
+    setDriversError(null);
+    try {
+      const data = await getDrivers();
+      setDrivers(data);
+    } catch {
+      setDriversError('Неуспешно зареждане на шофьорите.');
+    } finally {
+      setDriversLoading(false);
+    }
+  }, []);
+
+  const fetchRegistryEntries = useCallback(async () => {
+    setRegistryLoading(true);
+    setRegistryError(null);
+    try {
+      const entries = await getRegistryEntries();
+      setRegistryEntries(entries);
+    } catch (err) {
+      console.error('Неуспешно зареждане на регистъра.', err);
+      setRegistryError('Неуспешно зареждане на регистъра.');
+    } finally {
+      setRegistryLoading(false);
+    }
+  }, []);
+
+  const fetchAdmins = useCallback(async () => {
+    if (!isMasterAdmin) {
+      setAdmins([]);
+      return;
+    }
+
+    setAdminsLoading(true);
+    setAdminsError(null);
+    try {
+      const data = await getAdmins();
+      setAdmins(data);
+    } catch (err) {
+      console.error('Неуспешно зареждане на администратори.', err);
+      setAdminsError('Неуспешно зареждане на администратори.');
+    } finally {
+      setAdminsLoading(false);
+    }
+  }, [isMasterAdmin]);
+
+  const fetchClients = useCallback(async () => {
+    setClientsLoading(true);
+    setClientsError(null);
+    try {
+      const allClients = await getClients();
+      const startOfToday = startOfDay(new Date());
+
+      const enrichedClients: ClientWithSchedule[] = allClients.map(client => {
+        const upcomingDates = scheduleItems
+          .filter(item => item.clientId === client.id)
+          .map(item => {
+            const parsed = new Date(item.date);
+            return Number.isNaN(parsed.getTime()) ? null : parsed;
+          })
+          .filter((date): date is Date => !!date && date >= startOfToday)
+          .sort((a, b) => a.getTime() - b.getTime());
+
+        return { ...client, nextVisitDate: upcomingDates[0]?.toISOString() ?? null };
+      });
+
+      setClients(enrichedClients);
+    } catch {
+      setClientsError('Неуспешно зареждане на клиентите.');
+    } finally {
+      setClientsLoading(false);
+    }
+  }, [scheduleItems]);
+
+  useEffect(() => {
+    void fetchScheduleItems();
+    void fetchDrivers();
+    void fetchRegistryEntries();
+    void fetchAdmins();
+    void fetchOpenIncidents();
+  }, [fetchScheduleItems, fetchDrivers, fetchRegistryEntries, fetchAdmins, fetchOpenIncidents]);
+
+  useEffect(() => {
+    void fetchClients();
+  }, [fetchClients]);
+
+  useEffect(() => {
+    const query = registryForm.address.trim();
+    if (query.length < 3) {
+      setRegistryAddressSuggestions([]);
+      setShowRegistryAddressSuggestions(false);
+      return;
+    }
+
+    const debounce = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const suggestions = await fetchPhotonSuggestions(query);
+          setRegistryAddressSuggestions(suggestions);
+          setShowRegistryAddressSuggestions(true);
+        } catch (error) {
+          console.error('Failed to fetch registry address suggestions.', error);
+          setRegistryAddressSuggestions([]);
+        }
+      })();
+    }, 350);
+
+    return () => window.clearTimeout(debounce);
+  }, [registryForm.address]);
+
+  useEffect(() => {
+    if (currentView === 'admins' && !isMasterAdmin) setCurrentView('clients');
+  }, [currentView, isMasterAdmin]);
+
+  const sortedRegistryEntries = useMemo(() => {
+    return [...registryEntries].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'bg'));
+  }, [registryEntries]);
+
+  const registrySuggestions = useMemo(() => {
+    const queryValue = registrySearch.trim().toLowerCase();
+    if (!queryValue) return [];
+
+    return sortedRegistryEntries
+      .filter(entry => {
+        const egnMatch = (entry.egn ?? '').toLowerCase().includes(queryValue);
+        const nameMatch = (entry.name ?? '').toLowerCase().includes(queryValue);
+        return egnMatch || nameMatch;
+      })
+      .slice(0, 8);
+  }, [registrySearch, sortedRegistryEntries]);
+
+  const profileSearchResults = useMemo(() => {
+    const queryValue = profileSearch.trim().toLowerCase();
+    if (!queryValue) return [];
+
+    return sortedRegistryEntries
+      .filter(entry => {
+        const egnMatch = (entry.egn ?? '').toLowerCase().includes(queryValue);
+        const nameMatch = (entry.name ?? '').toLowerCase().includes(queryValue);
+        return egnMatch || nameMatch;
+      })
+      .slice(0, 8);
+  }, [profileSearch, sortedRegistryEntries]);
+
+  const todayClients = useMemo(() => {
+    const today = new Date();
+    return clients.filter(client => {
+      if (!client.nextVisitDate) return false;
+      const parsed = new Date(client.nextVisitDate);
+      if (Number.isNaN(parsed.getTime())) return false;
+      return isSameDay(parsed, today);
+    });
+  }, [clients]);
+
+  const totalClientsToday = todayClients.length;
+
+  const totalPortionsToday = useMemo(() => {
+    return todayClients.reduce((sum, client) => sum + (Number(client.mealCount) || 0), 0);
+  }, [todayClients]);
+
+  const remainingDeliveriesToday = useMemo(() => {
+    return todayClients.filter(client => {
+      const hasLastCheckIn = !!client.lastCheckIn?.trim();
+      const hasSignature = !!client.lastSignature;
+      return !hasLastCheckIn && !hasSignature;
+    }).length;
+  }, [todayClients]);
+
+  const activeSosCount = useMemo(() => {
+    return openIncidents.filter(incident => {
+      const typeValue = (incident.type ?? '').toLowerCase();
+      const isHighPriority = incident.status === 'Escalated' || typeValue.includes('sos');
+      const isActive = incident.status !== 'Resolved';
+      return isHighPriority && isActive;
+    }).length;
+  }, [openIncidents]);
+
+  const handleDateChange = (date: Date) => setSelectedDate(date);
+
+  const handleClientInputChange = (field: keyof typeof clientForm, value: string) => {
+    setClientForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleRegistryInputChange = (field: keyof typeof registryForm, value: string) => {
+    setRegistryForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const resetRegistryForm = () => {
+    setRegistryEditingId(null);
+    setRegistryForm({
+      egn: '',
+      name: '',
+      address: '',
+      phone: '',
+      defaultMealType: 'Стандартно меню',
+      defaultMealCount: '1'
+    });
+  };
+
+  const handleSubmitRegistryEntry = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedEgn = registryForm.egn.trim();
+    if (!trimmedEgn) {
+      setRegistryError('ЕГН е задължително поле.');
+      return;
+    }
+
+    const existingWithSameEgn = registryEntries.find(
+      entry => entry.egn.trim() === trimmedEgn && entry.id !== registryEditingId
+    );
+    if (existingWithSameEgn) {
+      setRegistryError('В регистъра вече има запис с това ЕГН.');
+      return;
+    }
+
+    setRegistrySubmitting(true);
+    setRegistryError(null);
+    try {
+      const payload = {
+        egn: trimmedEgn,
+        name: registryForm.name,
+        address: registryForm.address,
+        phone: registryForm.phone,
+        defaultMealType: registryForm.defaultMealType,
+        defaultMealCount: Math.max(1, Number(registryForm.defaultMealCount) || 1)
+      };
+
+      if (registryEditingId) await updateRegistryEntry(registryEditingId, payload);
+      else await addRegistryEntry(payload);
+
+      resetRegistryForm();
+      await fetchRegistryEntries();
+    } catch (err) {
+      console.error('Неуспешно записване в регистъра.', err);
+      setRegistryError('Неуспешно записване в регистъра.');
+    } finally {
+      setRegistrySubmitting(false);
+    }
+  };
+
+  const handleEditRegistryEntry = (entry: ClientRegistryEntry) => {
+    setRegistryEditingId(entry.id);
+    setRegistryError(null);
+    setRegistryForm({
+      egn: entry.egn ?? '',
+      name: entry.name ?? '',
+      address: entry.address ?? '',
+      phone: entry.phone ?? '',
+      defaultMealType: entry.defaultMealType ?? 'Стандартно меню',
+      defaultMealCount: String(entry.defaultMealCount ?? 1)
+    });
+  };
+
+  const handleRemoveRegistryEntry = async (entryId: string) => {
+    setRegistryDeletingId(entryId);
+    setRegistryError(null);
+    try {
+      await deleteRegistryEntry(entryId);
+      await fetchRegistryEntries();
+
+      if (registryEditingId === entryId) resetRegistryForm();
+      if (selectedRegistryEntryId === entryId) {
+        setSelectedRegistryEntryId(null);
+        setRegistrySearch('');
+        setClientForm(prev => ({ ...prev, egn: '' }));
+      }
+    } catch (err) {
+      console.error('Неуспешно изтриване от регистъра.', err);
+      setRegistryError('Неуспешно изтриване от регистъра.');
+    } finally {
+      setRegistryDeletingId(null);
+    }
+  };
+
+  const handleOpenProfile = async (entry: ClientRegistryEntry) => {
+    setProfileEntry(entry);
+    setIsProfileModalOpen(true);
+    setProfileLoading(true);
+    setProfileError(null);
+    try {
+      const history = await getClientHistory(entry.egn);
+      setProfileHistory(history);
+    } catch (err) {
+      console.error('Неуспешно зареждане на историята на клиента.', err);
+      setProfileError('Неуспешно зареждане на историята на клиента.');
+      setProfileHistory([]);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const handleCloseProfile = () => {
+    setIsProfileModalOpen(false);
+    setProfileEntry(null);
+    setProfileHistory([]);
+    setProfileError(null);
+  };
+
+  const handleSelectProfileSearch = (entry: ClientRegistryEntry) => {
+    void handleOpenProfile(entry);
+    setProfileSearch('');
+    setIsProfileSearchOpen(false);
+  };
+
+  const applyRegistrySelection = (entry: ClientRegistryEntry) => {
+    setSelectedRegistryEntryId(entry.id);
+    setRegistrySearch(`${entry.egn} — ${entry.name}`);
+    setClientForm(prev => ({
+      ...prev,
+      egn: entry.egn ?? '',
+      name: entry.name ?? '',
+      address: entry.address ?? '',
+      phone: entry.phone ?? '',
+      mealType: entry.defaultMealType ?? prev.mealType,
+      mealCount: String(entry.defaultMealCount ?? 1)
+    }));
+  };
+
+  const handleAddClient = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!clientForm.name || !clientForm.address) {
+      setClientsError('Моля, попълнете името и адреса.');
+      return;
+    }
+    if (!clientForm.assignedDriverId) {
+      setClientsError('Моля, изберете шофьор за клиента.');
+      return;
+    }
+    if (!clientForm.serviceDate) {
+      setClientsError('Моля, изберете дата за посещение.');
+      return;
+    }
+
+    const mealCountNumber = Math.max(1, Number(clientForm.mealCount) || 0);
+    const trimmedMealType = clientForm.mealType.trim() || 'Стандартно меню';
+
+    setClientSubmitting(true);
+    setClientsError(null);
+    try {
+      const clientId = await addClient({
+        egn: clientForm.egn.trim() ? clientForm.egn.trim() : undefined,
+        name: clientForm.name,
+        address: clientForm.address,
+        phone: clientForm.phone,
+        notes: clientForm.notes,
+        assignedDriverId: clientForm.assignedDriverId,
+        mealType: trimmedMealType,
+        mealCount: mealCountNumber,
+        lastCheckIn: ''
+      });
+
+      await addScheduleItem({
+        clientId,
+        driverId: clientForm.assignedDriverId,
+        date: clientForm.serviceDate
+      });
+
+      setClientForm({
+        egn: '',
+        name: '',
+        address: '',
+        phone: '',
+        notes: '',
+        assignedDriverId: '',
+        serviceDate: '',
+        mealType: 'Стандартно меню',
+        mealCount: '1'
+      });
+
+      setRegistrySearch('');
+      setSelectedRegistryEntryId(null);
+
+      await Promise.all([fetchClients(), fetchScheduleItems()]);
+    } catch {
+      setClientsError('Неуспешно добавяне на клиент.');
+    } finally {
+      setClientSubmitting(false);
+    }
+  };
+
+  const formatDateForInput = (value: Date) => value.toISOString().slice(0, 10);
+
+  const handleAddClientForSelectedDate = async () => {
+    const nextDateValue = formatDateForInput(selectedDate);
+    setClientForm(prev => ({ ...prev, serviceDate: nextDateValue }));
+
+    if (!clientForm.name || !clientForm.address) {
+      setClientsError('Моля, попълнете името и адреса.');
+      return;
+    }
+    if (!clientForm.assignedDriverId) {
+      setClientsError('Моля, изберете шофьор за клиента.');
+      return;
+    }
+
+    const mealCountNumber = Math.max(1, Number(clientForm.mealCount) || 0);
+    const trimmedMealType = clientForm.mealType.trim() || 'Стандартно меню';
+
+    setClientSubmitting(true);
+    setClientsError(null);
+    try {
+      const clientId = await addClient({
+        egn: clientForm.egn.trim() ? clientForm.egn.trim() : undefined,
+        name: clientForm.name,
+        address: clientForm.address,
+        phone: clientForm.phone,
+        notes: clientForm.notes,
+        assignedDriverId: clientForm.assignedDriverId,
+        mealType: trimmedMealType,
+        mealCount: mealCountNumber,
+        lastCheckIn: ''
+      });
+
+      await addScheduleItem({
+        clientId,
+        driverId: clientForm.assignedDriverId,
+        date: nextDateValue
+      });
+
+      setClientForm({
+        egn: '',
+        name: '',
+        address: '',
+        phone: '',
+        notes: '',
+        assignedDriverId: '',
+        serviceDate: '',
+        mealType: 'Стандартно меню',
+        mealCount: '1'
+      });
+
+      setRegistrySearch('');
+      setSelectedRegistryEntryId(null);
+
+      await Promise.all([fetchClients(), fetchScheduleItems()]);
+    } catch (err) {
+      console.error('Неуспешно добавяне на клиент за днес.', err);
+      setClientsError('Неуспешно добавяне на клиент.');
+    } finally {
+      setClientSubmitting(false);
+    }
+  };
+
+  const handleDeleteClient = async (clientId: string) => {
+    setClientDeletingId(clientId);
+    setClientsError(null);
+    try {
+      await deleteClient(clientId);
+      await deleteScheduleByClient(clientId);
+      await Promise.all([fetchClients(), fetchScheduleItems()]);
+    } catch {
+      setClientsError('Неуспешно изтриване на клиента.');
+    } finally {
+      setClientDeletingId(null);
+    }
+  };
+
+  const handleDriverInputChange = (field: keyof typeof driverForm, value: string) => {
+    setDriverForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleDriverCityChange = (city: string) => {
+    setDriverForm(prev => ({ ...prev, selectedCity: city, routeArea: '' }));
+  };
+
+  const handleAddDriver = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const { name, email, phone, selectedCity, routeArea } = driverForm;
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    const trimmedPhone = phone.trim();
+    const trimmedCity = selectedCity.trim();
+    const trimmedDistrict = routeArea.trim();
+
+    if (!trimmedName || !trimmedEmail || !trimmedPhone || !trimmedCity || !trimmedDistrict) {
+      setDriversError('Моля, попълнете всички полета за шофьора.');
+      return;
+    }
+
+    const combinedRoute = `${trimmedCity}, ${trimmedDistrict}`;
+
+    setDriverSubmitting(true);
+    setDriversError(null);
+    try {
+      await addDriver({ name: trimmedName, email: trimmedEmail, phone: trimmedPhone, routeArea: combinedRoute });
+      setDriverForm({ name: '', email: '', phone: '', routeArea: '', selectedCity: '' });
+      await fetchDrivers();
+    } catch {
+      setDriversError('Неуспешно добавяне на шофьор.');
+    } finally {
+      setDriverSubmitting(false);
+    }
+  };
+
+  const handleDeleteDriver = async (driverId: string) => {
+    setDriverDeletingId(driverId);
+    setDriversError(null);
+    try {
+      await deleteDriver(driverId);
+      await fetchDrivers();
+    } catch {
+      setDriversError('Неуспешно изтриване на шофьор.');
+    } finally {
+      setDriverDeletingId(null);
+    }
+  };
+
+  const handleAdminInputChange = (field: keyof typeof adminForm, value: string) => {
+    setAdminForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleAddAdmin = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const trimmedName = adminForm.name.trim();
+    const trimmedEmail = adminForm.email.trim();
+    if (!trimmedName || !trimmedEmail) {
+      setAdminsError('Моля, попълнете името и имейла на администратора.');
+      return;
+    }
+
+    setAdminSubmitting(true);
+    setAdminsError(null);
+    try {
+      await addAdmin({ name: trimmedName, email: trimmedEmail });
+      setAdminForm({ name: '', email: '' });
+      await fetchAdmins();
+    } catch (err) {
+      console.error('Неуспешно добавяне на администратор.', err);
+      setAdminsError('Неуспешно добавяне на администратор.');
+    } finally {
+      setAdminSubmitting(false);
+    }
+  };
+
+  const handleDeleteAdmin = async (adminId: string) => {
+    setAdminDeletingId(adminId);
+    setAdminsError(null);
+    try {
+      await deleteAdmin(adminId);
+      await fetchAdmins();
+    } catch {
+      setAdminsError('Неуспешно изтриване на администратор.');
+    } finally {
+      setAdminDeletingId(null);
+    }
+  };
+
+  const handleGenerateMonthlyReport = async () => {
+    setReportGenerating(true);
+    try {
+      await Promise.all([fetchClients(), fetchDrivers()]);
+      setShowReport(true);
+
+      queueMicrotask(() => {
+        window.print();
+        setShowReport(false);
+      });
+    } catch (error) {
+      console.error('Error generating report:', error);
+      setClientsError('Грешка при генериране на отчета.');
+      setShowReport(false);
+    } finally {
+      setReportGenerating(false);
+    }
+  };
+
+  const handleSelectRegistryAddressSuggestion = (suggestion: string) => {
+    handleRegistryInputChange('address', suggestion);
+    setRegistryAddressSuggestions([]);
+    setShowRegistryAddressSuggestions(false);
+  };
+
+  const handleOpenSignaturePreview = (driverUrl: string | null, clientUrl: string | null) => {
+    setSignaturePreviewDriverUrl(driverUrl);
+    setSignaturePreviewClientUrl(clientUrl);
+    setIsSignaturePreviewOpen(true);
+  };
+
+  const handleCloseSignaturePreview = () => {
+    setIsSignaturePreviewOpen(false);
+    setSignaturePreviewDriverUrl(null);
+    setSignaturePreviewClientUrl(null);
+  };
+
+  return {
+    // view state
+    currentView,
+    setCurrentView,
+    clientManagementTab,
+    setClientManagementTab,
+
+    // clients
+    clients,
+    clientsLoading,
+    clientsError,
+    clientSubmitting,
+    clientForm,
+    clientDeletingId,
+    setClientForm,
+    setClientsError,
+    handleClientInputChange,
+    handleAddClient,
+    handleAddClientForSelectedDate,
+    handleDeleteClient,
+
+    // schedule/report
+    scheduleItems,
+    selectedDate,
+    handleDateChange,
+    showReport,
+    reportGenerating,
+    handleGenerateMonthlyReport,
+
+    // registry
+    registryEntries,
+    sortedRegistryEntries,
+    registryLoading,
+    registryError,
+    registrySubmitting,
+    registryDeletingId,
+    registryEditingId,
+    registryForm,
+    registrySearch,
+    selectedRegistryEntryId,
+    registrySuggestions,
+    registryAddressSuggestions,
+    showRegistryAddressSuggestions,
+    setRegistrySearch,
+    setSelectedRegistryEntryId,
+    setShowRegistryAddressSuggestions,
+    handleRegistryInputChange,
+    resetRegistryForm,
+    handleSubmitRegistryEntry,
+    handleEditRegistryEntry,
+    handleRemoveRegistryEntry,
+    applyRegistrySelection,
+    handleSelectRegistryAddressSuggestion,
+
+    // profile modal/search
+    isProfileModalOpen,
+    profileEntry,
+    profileHistory,
+    profileLoading,
+    profileError,
+    profileSearch,
+    isProfileSearchOpen,
+    setProfileSearch,
+    setIsProfileSearchOpen,
+    profileSearchResults,
+    handleOpenProfile,
+    handleCloseProfile,
+    handleSelectProfileSearch,
+
+    // drivers
+    drivers,
+    driversLoading,
+    driversError,
+    driverSubmitting,
+    driverForm,
+    driverDeletingId,
+    handleDriverInputChange,
+    handleDriverCityChange,
+    handleAddDriver,
+    handleDeleteDriver,
+
+    // admins
+    admins,
+    adminsLoading,
+    adminsError,
+    adminSubmitting,
+    adminDeletingId,
+    adminForm,
+    handleAdminInputChange,
+    handleAddAdmin,
+    handleDeleteAdmin,
+
+    // incidents/stats
+    openIncidents,
+    totalClientsToday,
+    totalPortionsToday,
+    remainingDeliveriesToday,
+    activeSosCount,
+
+    // signature preview
+    isSignaturePreviewOpen,
+    signaturePreviewDriverUrl,
+    signaturePreviewClientUrl,
+    handleOpenSignaturePreview,
+    handleCloseSignaturePreview
+  };
+}

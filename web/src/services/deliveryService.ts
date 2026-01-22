@@ -1,0 +1,48 @@
+import { addDoc, collection, getFirestore, Timestamp } from 'firebase/firestore';
+
+export type GeoLocation = {
+  lat: number;
+  lng: number;
+};
+
+export type CompleteDeliveryPayload = {
+  clientId: string;
+  driverId: string;
+  startLocation: GeoLocation;
+  endLocation: GeoLocation;
+  timestamp?: Date;
+};
+
+const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+
+const haversineDistanceKm = (start: GeoLocation, end: GeoLocation) => {
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(end.lat - start.lat);
+  const dLng = toRadians(end.lng - start.lng);
+  const lat1 = toRadians(start.lat);
+  const lat2 = toRadians(end.lat);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+
+  return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+export const completeDelivery = async (payload: CompleteDeliveryPayload) => {
+  const db = getFirestore();
+  const distanceTravelled = haversineDistanceKm(payload.startLocation, payload.endLocation);
+  const timestamp = payload.timestamp ?? new Date();
+
+  const docRef = await addDoc(collection(db, 'deliveryHistory'), {
+    clientId: payload.clientId,
+    driverId: payload.driverId,
+    timestamp: Timestamp.fromDate(timestamp),
+    startLocation: payload.startLocation,
+    endLocation: payload.endLocation,
+    distanceTravelled,
+    status: 'success',
+  });
+
+  return { id: docRef.id, distanceTravelled };
+};

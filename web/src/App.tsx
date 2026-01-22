@@ -6,6 +6,7 @@ import { checkStandardAdminStatus } from './services/adminAccessService';
 import { FirebaseUser, login, logout, register, subscribeToAuthState } from './services/authService';
 import AdminDashboard from './views/AdminDashboard';
 import DriverView from './views/DriverView';
+// Report services are in src/services/reportService.ts
 
 function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
