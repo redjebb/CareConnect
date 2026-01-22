@@ -3,6 +3,7 @@ import AdminDailyListView from './AdminDailyListView';
 import AdminDriversView from './AdminDriversView';
 import AdminAdminsManagementView from './AdminAdminsManagementView';
 import AdminRegistryView from './AdminRegistryView';
+import UserProfileModal from '../components/UserProfileModal';
 
 const CITY_DATA: Record<string, string[]> = {
   София: [
@@ -141,6 +142,14 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
     setIsProfileSearchOpen,
     profileSearchResults,
     handleSelectProfileSearch,
+
+    // profile modal
+    isProfileModalOpen,
+    profileEntry,
+    profileHistory,
+    profileLoading,
+    profileError,
+    handleCloseProfile,
 
     // stats (daily)
     totalClientsToday,
@@ -405,6 +414,15 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
             onDeleteDriver={driverId => void handleDeleteDriver(driverId)}
           />
         ) : null}
+
+        <UserProfileModal
+          isOpen={isProfileModalOpen}
+          entry={profileEntry}
+          history={profileHistory}
+          isLoading={profileLoading}
+          errorMessage={profileError}
+          onClose={handleCloseProfile}
+        />
       </div>
     </main>
   );

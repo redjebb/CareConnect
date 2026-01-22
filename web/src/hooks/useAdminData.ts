@@ -450,13 +450,24 @@ export function useAdminData(isMasterAdmin: boolean) {
   };
 
   const handleOpenProfile = async (entry: ClientRegistryEntry) => {
+    console.log('Opening profile for:', entry);
+
+    // Always open the modal immediately, even if history fetch fails.
     setProfileEntry(entry);
     setIsProfileModalOpen(true);
     setProfileLoading(true);
     setProfileError(null);
+    setProfileHistory([]);
+
     try {
-      const history = await getClientHistory(entry.egn);
-      setProfileHistory(history);
+      const egn = (entry?.egn ?? '').trim();
+      if (!egn) {
+        setProfileError('Липсва ЕГН за този профил.');
+        return;
+      }
+
+      const history = await getClientHistory(egn);
+      setProfileHistory(Array.isArray(history) ? history : []);
     } catch (err) {
       console.error('Неуспешно зареждане на историята на клиента.', err);
       setProfileError('Неуспешно зареждане на историята на клиента.');
