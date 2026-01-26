@@ -3,7 +3,6 @@ import {
   collection,
   getDocs,
   getFirestore,
-  orderBy,
   query,
   where
 } from 'firebase/firestore';
@@ -18,43 +17,52 @@ const endOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0, 2
 
 /**
  * Fetch deliveries for a client within a month.
- * If `end` is provided, treat `monthOrStart` as the explicit start range.
+ * Filters by date range in JavaScript to avoid Firestore index requirements.
  */
-export async function getClientMonthlyReport(clientId: string, monthOrStart: Date, end?: Date) {
+export async function getClientMonthlyReport(clientEgn: string, date: Date) {
   const db = getFirestore();
+  
+  try {
+    const monthStart = startOfMonth(date);
+    const monthEnd = endOfMonth(date);
 
-  const start = end ? monthOrStart : startOfMonth(monthOrStart);
-  const finish = end ? end : endOfMonth(monthOrStart);
+    const q = query(
+      collection(db, 'deliveryHistory'),
+      where('egn', '==', clientEgn)
+    );
 
-  console.log('Querying range:', start, finish);
+    const snap = await getDocs(q);
+    
+    if (snap.empty) {
+      return { deliveries: [] };
+    }
 
-  const q = query(
-    collection(db, 'deliveryHistory'),
-    where('clientId', '==', clientId),
-    where('timestamp', '>=', Timestamp.fromDate(start)),
-    where('timestamp', '<=', Timestamp.fromDate(finish)),
-    orderBy('timestamp', 'asc')
-  );
+    const deliveries = snap.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        timestamp: doc.data().timestamp // Ensure timestamp is included
+      }))
+      .filter(delivery => {
+        const ts = delivery.timestamp;
+        if (!ts) return false;
+        
+        // Handle Firestore Timestamp or Date
+        const deliveryDate = ts.toDate ? ts.toDate() : new Date(ts);
+        return deliveryDate >= monthStart && deliveryDate <= monthEnd;
+      })
+      .sort((a, b) => {
+        const aTime = a.timestamp?.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime();
+        const bTime = b.timestamp?.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime();
+        return aTime - bTime;
+      });
 
-  const snap = await getDocs(q);
-
-  const deliveries = snap.docs.map(doc => {
-    const data = doc.data() as any;
-    const ts: Timestamp | undefined = data?.timestamp;
-
-    return {
-      id: doc.id,
-      timestamp: ts,
-      deliveredAt: ts?.toDate?.() ? ts.toDate().toISOString() : undefined,
-      // keep any extra fields if needed by other callers:
-      driverId: data?.driverId,
-      status: data?.status,
-      distanceTravelled: data?.distanceTravelled
-    };
-  });
-
-  return { deliveries, start, end: finish };
-};
+    return { deliveries };
+  } catch (error) {
+    console.error("Грешка при четене на история:", error);
+    return { deliveries: [] }; 
+  }
+}
 
 export const getDriverDailyReport = async (driverId: string, date: Date) => {
   const db = getFirestore();

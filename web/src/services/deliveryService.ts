@@ -11,6 +11,8 @@ export type CompleteDeliveryPayload = {
   startLocation: GeoLocation;
   endLocation: GeoLocation;
   timestamp?: Date;
+  mealType?: string;
+  mealCount?: number;
 };
 
 const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
@@ -29,20 +31,16 @@ const haversineDistanceKm = (start: GeoLocation, end: GeoLocation) => {
   return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-export const completeDelivery = async (payload: CompleteDeliveryPayload) => {
+export const completeDelivery = async (payload: CompleteDeliveryPayload & { egn: string }) => {
+  console.log('Sending to Firestore:', payload);
+  
   const db = getFirestore();
-  const distanceTravelled = haversineDistanceKm(payload.startLocation, payload.endLocation);
-  const timestamp = payload.timestamp ?? new Date();
 
   const docRef = await addDoc(collection(db, 'deliveryHistory'), {
-    clientId: payload.clientId,
-    driverId: payload.driverId,
-    timestamp: Timestamp.fromDate(timestamp),
-    startLocation: payload.startLocation,
-    endLocation: payload.endLocation,
-    distanceTravelled,
+    ...payload,
+    timestamp: Timestamp.fromDate(payload.timestamp || new Date()),
     status: 'success',
   });
 
-  return { id: docRef.id, distanceTravelled };
+  return { id: docRef.id };
 };

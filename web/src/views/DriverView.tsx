@@ -8,6 +8,7 @@ import { addIncident } from '../incidentService';
 import IncidentReporter from '../IncidentReporter';
 import DriverRoute, { DriverVisit as DriverVisitCard } from '../components/DriverRoute';
 import SignatureModal from '../components/SignatureModal';
+import {completeDelivery} from '../services/deliveryService';
 
 type DriverVisit = {
   client: Client;
@@ -507,7 +508,11 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
   const handleDriverCheckIn = async (clientId: string, driverSig: string, clientSig: string) => {
     setDriverActionClientId(clientId);
     setDriverClientsError(null);
+    
     try {
+      const targetClient = driverClients.find(c => c.id === clientId);
+      const clientCoords = geoCache[getAddressKey(targetClient?.address || '')];
+
       await updateClientSignatures(
         clientId,
         driverSig,
@@ -515,10 +520,25 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         'Доставено и подписано от двете страни'
       );
 
+      await completeDelivery({
+        clientId: clientId,
+        egn: targetClient?.egn || 'N/A',
+        driverId: currentDriver.id,
+        startLocation: currentPosition || { lat: 0, lng: 0 },
+        endLocation: clientCoords || { lat: 0, lng: 0 },
+        timestamp: new Date(),
+        mealType: (targetClient as any)?.mealType || 'Стандартно меню',
+        mealCount: Number((targetClient as any)?.mealCount) || 1
+      });
+
+      console.log('Delivery history record successfully created for client:', clientId);
+
       const refreshed = await getClientsByDriver(currentDriver.id);
       setDriverClients(refreshed);
+
     } catch (err) {
-      setDriverClientsError('Неуспешно записване на посещението.');
+      console.error("Грешка при финализиране на доставка:", err);
+      setDriverClientsError('Неуспешно записване на посещението в историята.');
     } finally {
       setDriverActionClientId(null);
     }
@@ -706,6 +726,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
           }
           await handleDriverCheckIn(signatureClient.id, driverSig, clientSig);
         }}
+        
       />
     </main>
   );

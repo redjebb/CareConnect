@@ -14,6 +14,16 @@ interface UserProfileModalProps {
 type MonthlyDelivery = {
   date: string;
   time: string;
+  mealType: string;
+  mealCount: number;
+};
+
+const getSafeDate = (val: any): Date | null => {
+  if (!val) return null;
+  if (typeof val.toDate === 'function') return val.toDate(); // Firebase Timestamp
+  if (typeof val.seconds === 'number') return new Date(val.seconds * 1000); // Serialized Timestamp
+  const parsed = new Date(val);
+  return isNaN(parsed.getTime()) ? null : parsed;
 };
 
 const extractHistoryDate = (entry: ClientHistoryEntry): Date | null => {
@@ -135,88 +145,52 @@ export default function UserProfileModal({
     }
   }, [reportDate]);
 
-  // If report has data, use it; otherwise fall back to history (requested)
+
   const displayHistory = useMemo(() => {
     return monthlyDeliveries.length > 0 ? monthlyDeliveries : safeHistory;
   }, [monthlyDeliveries, safeHistory]);
 
-  // Sum up portions from displayHistory; fallback to 1 if mealCount missing (so it won't show 0)
   const deliveredPortionsThisMonth = useMemo(() => {
     return displayHistory.reduce((sum, item: any) => {
       const n = Number(item?.mealCount);
       if (Number.isFinite(n) && n > 0) return sum + n;
-      // monthlyDeliveries rows don't include mealCount -> treat each row as 1 portion by default
       return sum + 1;
     }, 0);
   }, [displayHistory]);
 
   const handleGenerateReport = async () => {
-    const safeReportDate =
-      reportDate instanceof Date && !Number.isNaN(reportDate.getTime()) ? reportDate : new Date();
-
-    // Full-month range (00:00:00.000 -> 23:59:59.999)
-    const startOfMonth = new Date(
-      safeReportDate.getFullYear(),
-      safeReportDate.getMonth(),
-      1,
-      0,
-      0,
-      0,
-      0
-    );
-    const endOfMonth = new Date(
-      safeReportDate.getFullYear(),
-      safeReportDate.getMonth() + 1,
-      0,
-      23,
-      59,
-      59,
-      999
-    );
-
-    console.log('Fetching for ID:', entry.id, 'Date:', safeReportDate, 'Range:', startOfMonth, endOfMonth);
-
     try {
       setReportLoading(true);
+      
+      const data = await (getClientMonthlyReport as any)(entry.egn, reportDate);
+      
+      const deliveriesRaw = (data as any)?.deliveries || [];
 
-      // Pass range; if the service only accepts (id, date), extra args are ignored at runtime.
-      const data = await (getClientMonthlyReport as any)(entry.id, startOfMonth, endOfMonth);
-
-      const deliveriesRaw: any[] = Array.isArray((data as any)?.deliveries)
-        ? (data as any).deliveries
-        : Array.isArray(data)
-          ? (data as any)
-          : [];
-
-      if (!deliveriesRaw.length) {
+      if (deliveriesRaw.length === 0) {
         setMonthlyDeliveries([]);
-        console.log('monthlyDeliveries: [] (no rows from service)', { data });
         alert('Няма данни за избрания период');
         return;
       }
 
-      const normalized: MonthlyDelivery[] = deliveriesRaw.map((row: any) => {
-        const deliveredAt = row?.deliveredAt ? new Date(row.deliveredAt) : null;
-        const date =
-          (row?.date as string | undefined) ??
-          (deliveredAt && !Number.isNaN(deliveredAt.getTime())
-            ? deliveredAt.toLocaleDateString('bg-BG', { day: '2-digit', month: '2-digit', year: 'numeric' })
-            : '—');
-        const time =
-          (row?.time as string | undefined) ??
-          (deliveredAt && !Number.isNaN(deliveredAt.getTime())
-            ? deliveredAt.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' })
-            : '—');
-        return { date, time };
+      const normalized = deliveriesRaw.map((row: any) => {
+        const d = getSafeDate(row.timestamp);
+        return {
+          date: d ? d.toLocaleDateString('bg-BG', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-',
+          time: d ? d.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' }) : '-',
+          mealType: row.mealType || '—',
+          mealCount: row.mealCount || 0
+        };
       });
 
-      console.log('monthlyDeliveries:', normalized);
       setMonthlyDeliveries(normalized);
-      queueMicrotask(() => window.print());
+
+      setTimeout(() => {
+        window.print();
+      }, 500);
+
     } catch (err) {
       console.error(err);
-      setMonthlyDeliveries([]);
-      alert('Няма данни за избрания период');
+      alert('Грешка при зареждане на данните.');
     } finally {
       setReportLoading(false);
     }
@@ -288,19 +262,19 @@ export default function UserProfileModal({
                 <tbody className="divide-y divide-slate-100">
                   {sortedHistory.map(item => {
                     const delivered = isDelivered(item);
+                    const itemDate = getSafeDate((item as any).timestamp);
                     return (
                       <tr key={item.id}>
                         <td className="px-3 py-3 text-slate-600">
-                          {(() => {
-                            const ts = (item as any).timestamp;
-                            if (!ts) return '-';
-                            const d = ts.toDate ? ts.toDate() : ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
-                            return isNaN(d.getTime())
-                              ? '-'
-                              : d.toLocaleDateString('bg-BG') +
-                                  ' ' +
-                                  d.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' });
-                          })()}
+                          {itemDate
+                            ? itemDate.toLocaleString('bg-BG', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })
+                            : '-'}
                         </td>
                         <td className="px-3 py-3">
                           <span
@@ -359,7 +333,7 @@ export default function UserProfileModal({
             </div>
           </div>
 
-          {/* ✅ Print Content: Name/EGN/Address + Date/Time table only (no km) */}
+          {/* Print Content: Name/EGN/Address + Date/Time/Menu/Count table */}
           <div id="printable-report">
             <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 0.5 }}>
               МЕСЕЧЕН ОТЧЕТ ЗА ДОСТАВКА НА ХРАНА
@@ -372,6 +346,8 @@ export default function UserProfileModal({
               <div><strong>Клиент:</strong> {entry?.name ?? ''}</div>
               <div><strong>ЕГН:</strong> {entry?.egn ?? ''}</div>
               <div><strong>Адрес:</strong> {entry?.address ?? ''}</div>
+              <div><strong>Месец:</strong> {reportPeriodLabel}</div>
+              <div style={{ marginTop: 8 }}><strong>Общ брой доставки за месеца:</strong> {monthlyDeliveries.length}</div>
             </div>
 
             <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 14, fontSize: 12 }}>
@@ -383,6 +359,12 @@ export default function UserProfileModal({
                   <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>
                     Час
                   </th>
+                  <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>
+                    Меню
+                  </th>
+                  <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>
+                    Брой
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -390,6 +372,8 @@ export default function UserProfileModal({
                   <tr key={`${d.date}-${d.time}-${idx}`}>
                     <td style={{ border: '1px solid #e2e8f0', padding: 8 }}>{d.date}</td>
                     <td style={{ border: '1px solid #e2e8f0', padding: 8 }}>{d.time}</td>
+                    <td style={{ border: '1px solid #e2e8f0', padding: 8 }}>{d.mealType}</td>
+                    <td style={{ border: '1px solid #e2e8f0', padding: 8 }}>{d.mealCount}</td>
                   </tr>
                 ))}
               </tbody>
