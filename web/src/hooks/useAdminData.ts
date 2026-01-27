@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { addClient, deleteClient, getClientHistory, getClients } from '../clientService';
+import { addClient, deleteClient, deleteDeliveryFromHistory, getClientHistory, getClients } from '../clientService';
 import { addScheduleItem, deleteScheduleByClient, getScheduleItems } from '../scheduleService';
 import { addDriver, deleteDriver, getDrivers } from '../driverService';
 import { addAdmin, deleteAdmin, getAdmins } from '../adminService';
@@ -633,8 +633,11 @@ export function useAdminData(isMasterAdmin: boolean) {
     setClientDeletingId(clientId);
     setClientsError(null);
     try {
-      await deleteClient(clientId);
-      await deleteScheduleByClient(clientId);
+      // Delete delivery history for today only (keeps historical records for accounting)
+      await deleteDeliveryFromHistory(clientId, new Date());
+      // Delete client and all related schedule items atomically
+      // Pass false to keep delivery history for accounting purposes
+      await deleteClient(clientId, false);
       await Promise.all([fetchClients(), fetchScheduleItems()]);
     } catch {
       setClientsError('Неуспешно изтриване на клиента.');
