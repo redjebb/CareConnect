@@ -18,6 +18,48 @@ type DriverVisit = {
   distanceFromPreviousKm?: number | null;
 };
 
+type ShiftData = {
+  isActive: boolean;
+  startTime: string | null;
+  deliveredCount: number;
+};
+
+const SHIFT_STORAGE_KEY = 'careconnect_driver_shift';
+
+const getStoredShift = (): ShiftData | null => {
+  try {
+    const stored = localStorage.getItem(SHIFT_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+};
+
+const saveShiftToStorage = (data: ShiftData) => {
+  try {
+    localStorage.setItem(SHIFT_STORAGE_KEY, JSON.stringify(data));
+  } catch (err) {
+    console.error('Failed to save shift data:', err);
+  }
+};
+
+const clearShiftFromStorage = () => {
+  try {
+    localStorage.removeItem(SHIFT_STORAGE_KEY);
+  } catch (err) {
+    console.error('Failed to clear shift data:', err);
+  }
+};
+
+const formatDuration = (startTime: string): string => {
+  const start = new Date(startTime);
+  const now = new Date();
+  const diffMs = now.getTime() - start.getTime();
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  return `${hours}ч ${minutes}мин`;
+};
+
 const startOfDay = (date: Date) => {
   const normalized = new Date(date);
   normalized.setHours(0, 0, 0, 0);
@@ -220,6 +262,37 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
   const [signatureClient, setSignatureClient] = useState<Client | null>(null);
 
+  const [isShiftActive, setIsShiftActive] = useState<boolean>(() => {
+    try {
+      const stored = getStoredShift();
+      return stored?.isActive === true;
+    } catch {
+      return false;
+    }
+  });
+
+  const [shiftStartTime, setShiftStartTime] = useState<string | null>(() => {
+    try {
+      const stored = getStoredShift();
+      return stored?.startTime ?? null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [showStartShiftModal, setShowStartShiftModal] = useState(false);
+  const [showEndShiftModal, setShowEndShiftModal] = useState(false);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [shiftSummary, setShiftSummary] = useState<{
+    startTime: string;
+    endTime: string;
+    duration: string;
+    deliveredCount: number;
+    issueCount: number;
+    pendingCount: number;
+    totalDistanceKm: number;
+  } | null>(null);
+
   const fetchSchedule = useCallback(async () => {
     try {
       const data = await getScheduleItems();
@@ -366,144 +439,127 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
     [driverVisits]
   );
 
-  const upcomingVisits = useMemo(() => {
-    return driverVisits
-      .filter(
-        entry =>
-          !isSameDay(entry.date, new Date()) &&
-          !isTomorrow(entry.date) &&
-          isAfterTomorrow(entry.date)
+  const deliveredTodayCount = useMemo(() => {
+    return todayVisits.filter(visit => 
+      Boolean(
+        visit.client.clientSignature ||
+        visit.client.lastSignature ||
+        visit.client.driverSignature ||
+        visit.client.lastCheckIn?.trim()
       )
-      .sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [driverVisits]);
+    ).length;
+  }, [todayVisits]);
 
-  const optimizedTodayVisits = useMemo(() => {
-    if (todayVisits.length <= 1) {
-      return todayVisits;
-    }
+  const pendingTodayCount = useMemo(() => {
+    return todayVisits.filter(visit => 
+      !Boolean(
+        visit.client.clientSignature ||
+        visit.client.lastSignature ||
+        visit.client.driverSignature ||
+        visit.client.lastCheckIn?.trim()
+      )
+    ).length;
+  }, [todayVisits]);
 
-    if (isLocationLoading && !currentPosition) {
-      return todayVisits;
-    }
+  // Helper to check if entry is an issue
+  const isIssueEntry = useCallback((lastCheckIn: string | undefined): boolean => {
+    if (!lastCheckIn) return false;
+    const normalized = lastCheckIn.trim().toUpperCase();
+    return normalized.startsWith('INCIDENT:') || normalized.startsWith('SOS ');
+  }, []);
 
-    const coordsMap = geoCache;
-    const visitsWithCoords = todayVisits.filter(
-      visit => coordsMap[getAddressKey(visit.client.address)] != null
-    );
-    const visitsWithoutCoords = todayVisits.filter(
-      visit => coordsMap[getAddressKey(visit.client.address)] == null
-    );
+  // Count issues today (for display in modals)
+  const issueTodayCount = useMemo(() => {
+    return todayVisits.filter(visit => 
+      isIssueEntry(visit.client.lastCheckIn)
+    ).length;
+  }, [todayVisits, isIssueEntry]);
 
-    if (visitsWithCoords.length <= 1) {
-      return todayVisits;
-    }
-
-    const remaining = [...visitsWithCoords];
-    const ordered: DriverVisit[] = [];
-
-    let lastCoords = currentPosition;
-    if (lastCoords) {
-      let nearestIndex = 0;
-      let nearestDistance = Number.POSITIVE_INFINITY;
-      remaining.forEach((visit, index) => {
-        const coords = coordsMap[getAddressKey(visit.client.address)];
-        if (!coords) {
-          return;
-        }
-        const distance = calculateDistance(lastCoords as { lat: number; lng: number }, coords);
-        if (distance < nearestDistance) {
-          nearestDistance = distance;
-          nearestIndex = index;
-        }
-      });
-
-      const first = remaining.splice(nearestIndex, 1)[0];
-      ordered.push(first);
-      lastCoords = coordsMap[getAddressKey(first.client.address)] ?? lastCoords;
-    } else {
-      const first = remaining.shift();
-      if (first) {
-        ordered.push(first);
-        lastCoords = coordsMap[getAddressKey(first.client.address)] ?? null;
-      }
-    }
-
-    while (remaining.length > 0) {
-      if (!lastCoords) {
-        ordered.push(remaining.shift()!);
-        continue;
-      }
-
-      let nearestIndex = 0;
-      let nearestDistance = Number.POSITIVE_INFINITY;
-      remaining.forEach((visit, index) => {
-        const coords = coordsMap[getAddressKey(visit.client.address)];
-        if (!coords) {
-          return;
-        }
-        const distance = calculateDistance(lastCoords as { lat: number; lng: number }, coords);
-        if (distance < nearestDistance) {
-          nearestDistance = distance;
-          nearestIndex = index;
-        }
-      });
-
-      const nextVisit = remaining.splice(nearestIndex, 1)[0];
-      ordered.push(nextVisit);
-      lastCoords = coordsMap[getAddressKey(nextVisit.client.address)] ?? lastCoords;
-    }
-
-    return [...ordered, ...visitsWithoutCoords];
-  }, [todayVisits, geoCache, currentPosition, isLocationLoading]);
+  // Count actual delivered today (excluding issues)
+  const actualDeliveredTodayCount = useMemo(() => {
+    return todayVisits.filter(visit => {
+      const hasEntry = Boolean(
+        visit.client.clientSignature ||
+        visit.client.lastSignature ||
+        visit.client.driverSignature ||
+        visit.client.lastCheckIn?.trim()
+      );
+      return hasEntry && !isIssueEntry(visit.client.lastCheckIn);
+    }).length;
+  }, [todayVisits, isIssueEntry]);
 
   const optimizedTodayVisitsWithMeta = useMemo(() => {
-    if (optimizedTodayVisits.length === 0) {
-      return [] as DriverVisit[];
-    }
+    const visitsWithCoords = todayVisits.map(visit => {
+      const coords = geoCache[getAddressKey(visit.client.address)];
+      return { ...visit, coords };
+    });
 
+    // Keep original order (no sequenceNumber available on ScheduleItem)
+    const sorted = visitsWithCoords;
+
+    // Calculate distances from previous point (starting from driver's current position)
     let previousCoords = currentPosition;
-    return optimizedTodayVisits.map((visit, index) => {
-      const coords = geoCache[getAddressKey(visit.client.address)] ?? null;
+    return sorted.map((visit, index) => {
       let distanceFromPreviousKm: number | null = null;
-      if (previousCoords && coords) {
-        distanceFromPreviousKm = calculateDistance(previousCoords, coords);
+      if (visit.coords && previousCoords) {
+        distanceFromPreviousKm = calculateDistance(previousCoords, visit.coords);
       }
-
-      if (coords) {
-        previousCoords = coords;
+      if (visit.coords) {
+        previousCoords = visit.coords;
       }
-
       return {
         ...visit,
         sequenceNumber: index + 1,
         distanceFromPreviousKm
       };
     });
-  }, [optimizedTodayVisits, geoCache, currentPosition]);
+  }, [todayVisits, geoCache, currentPosition]);
 
-  const toRouteVisit = (visits: DriverVisit[]): DriverVisitCard[] =>
-    visits.map(entry => ({
-      client: entry.client,
-      date: entry.date,
-      sequenceNumber: entry.sequenceNumber,
-      distanceFromPreviousKm: entry.distanceFromPreviousKm
-    }));
+  const totalGpsDistanceKm = useMemo(() => {
+    return optimizedTodayVisitsWithMeta.reduce((total, visit) => {
+      const isDelivered = Boolean(
+        visit.client.clientSignature ||
+        visit.client.lastSignature ||
+        visit.client.driverSignature ||
+        visit.client.lastCheckIn?.trim()
+      );
+      if (isDelivered && visit.distanceFromPreviousKm) {
+        return total + visit.distanceFromPreviousKm;
+      }
+      return total;
+    }, 0);
+  }, [optimizedTodayVisitsWithMeta]);
 
-  const mapVisits = optimizedTodayVisitsWithMeta;
   const mapCoordinates = useMemo(() => {
-    return mapVisits
-      .map(visit => ({
-        visit,
-        coords: geoCache[getAddressKey(visit.client.address)]
-      }))
-      .filter(item => item.coords != null) as Array<{
-      visit: DriverVisit;
-      coords: { lat: number; lng: number };
-    }>;
-  }, [mapVisits, geoCache]);
+    return optimizedTodayVisitsWithMeta
+      .filter(visit => visit.coords)
+      .map(visit => ({ visit, coords: visit.coords! }));
+  }, [optimizedTodayVisitsWithMeta]);
 
-  const mapFallbackCenter = useMemo(() => ({ lat: 42.6977, lng: 23.3219 }), []);
-  const mapBoundsPoints = useMemo(() => mapCoordinates.map(item => item.coords), [mapCoordinates]);
+  const mapBoundsPoints = useMemo(() => {
+    return mapCoordinates.map(({ coords }) => coords);
+  }, [mapCoordinates]);
+
+  const mapFallbackCenter = useMemo(() => {
+    if (currentPosition) return currentPosition;
+    if (mapBoundsPoints.length > 0) return mapBoundsPoints[0];
+    return { lat: 42.7, lng: 23.32 }; // Default to Sofia, Bulgaria
+  }, [currentPosition, mapBoundsPoints]);
+
+  const upcomingVisits = useMemo(
+    () => driverVisits.filter(entry => isAfterTomorrow(entry.date)),
+    [driverVisits]
+  );
+
+  const toRouteVisit = (visits: DriverVisit[]) => {
+    return visits.map(visit => ({
+      client: visit.client,
+      schedule: visit.schedule,
+      date: visit.date,
+      sequenceNumber: (visit as any).sequenceNumber,
+      distanceFromPreviousKm: (visit as any).distanceFromPreviousKm
+    }));
+  };
 
   const handleDriverCheckIn = async (clientId: string, driverSig: string, clientSig: string) => {
     setDriverActionClientId(clientId);
@@ -544,7 +600,15 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
     }
   };
 
-  const handleOpenIncident = (client: Client) => {
+  const handleOpenIncident = (client: Client | null | undefined) => {
+    if (!client) {
+      console.warn('Cannot open incident: no client provided');
+      return;
+    }
+    if (!isShiftActive) {
+      alert('Моля, първо започнете смяната, за да подадете сигнал.');
+      return;
+    }
     setIncidentClient(client);
     setIsIncidentModalOpen(true);
   };
@@ -578,27 +642,196 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
   const handleSubmitIncidentReport = useCallback(
     async (incidentType: string, description: string) => {
       if (!incidentClient) {
-        throw new Error('Липсват данни за клиента.');
+        console.warn('Cannot submit incident: no client selected');
+        alert('Моля, изберете клиент.');
+        return;
       }
 
-      const incidentTimestamp = new Date().toISOString();
+      if (!isShiftActive) {
+        alert('Не можете да подавате сигнал без активна смяна.');
+        return;
+      }
 
-      await addIncident({
-        clientId: incidentClient.id,
-        driverId: currentDriver.id,
-        type: incidentType,
-        description
+      try {
+        const incidentTimestamp = new Date().toISOString();
+
+        await addIncident({
+          clientId: incidentClient.id,
+          driverId: currentDriver.id,
+          type: incidentType,
+          description
+        });
+
+        // Save issue to deliveryHistory with status: 'issue'
+        await completeDelivery({
+          clientId: incidentClient.id,
+          egn: incidentClient?.egn || 'N/A',
+          driverId: currentDriver.id,
+          startLocation: currentPosition || { lat: 0, lng: 0 },
+          endLocation: geoCache[getAddressKey(incidentClient?.address || '')] || { lat: 0, lng: 0 },
+          timestamp: new Date(),
+          mealType: (incidentClient as any)?.mealType || 'Стандартно меню',
+          mealCount: 0, // No meal delivered for issues
+          status: 'issue',
+          issueType: incidentType,
+          issueDescription: description
+        } as any);
+
+        await updateClientLastCheckIn(
+          incidentClient.id,
+          `INCIDENT: ${incidentType} ${incidentTimestamp}`
+        );
+
+        await handleIncidentReportSuccess();
+        
+        alert('✅ Сигналът е изпратен успешно!');
+        handleCloseIncidentModal();
+      } catch (err) {
+        console.error('Failed to submit incident:', err);
+        alert('Грешка при изпращане на сигнала. Моля, опитайте отново.');
+      }
+    },
+    [incidentClient, currentDriver?.id, handleIncidentReportSuccess, isShiftActive, currentPosition, geoCache]
+  );
+
+  const handleStartShift = () => {
+    try {
+      const now = new Date().toISOString();
+      setIsShiftActive(true);
+      setShiftStartTime(now);
+      setShowStartShiftModal(false);
+
+      saveShiftToStorage({
+        isActive: true,
+        startTime: now,
+        deliveredCount: 0
+      });
+    } catch (err) {
+      console.error('Failed to start shift:', err);
+      alert('Грешка при започване на смяната. Моля, опитайте отново.');
+    }
+  };
+
+  const handleEndShift = () => {
+    try {
+      const endTime = new Date().toISOString();
+      const duration = shiftStartTime ? formatDuration(shiftStartTime) : '—';
+
+      const shiftStartDate = shiftStartTime ? new Date(shiftStartTime) : null;
+      const shiftEndDate = new Date(endTime);
+
+      const getDeliveryTimestamp = (lastCheckIn: string | undefined): Date | null => {
+        if (!lastCheckIn) return null;
+        const trimmed = lastCheckIn.trim();
+        
+        const isoMatch = trimmed.match(/\d{4}-\d{2}-\d{2}T[^\s]+/);
+        if (isoMatch) {
+          const parsed = new Date(isoMatch[0]);
+          return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+        
+        const parsed = new Date(trimmed);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      };
+
+      // Filter entries within shift time window
+      const entriesDuringShift = (todayVisits ?? []).filter(visit => {
+        if (!visit?.client) return false;
+        
+        const hasEntry = Boolean(
+          visit.client.clientSignature ||
+          visit.client.lastSignature ||
+          visit.client.driverSignature ||
+          visit.client.lastCheckIn?.trim()
+        );
+        
+        if (!hasEntry) return false;
+
+        const entryTime = getDeliveryTimestamp(visit.client.lastCheckIn);
+        
+        if (!entryTime) return false;
+        if (!shiftStartDate) return false;
+        
+        return entryTime >= shiftStartDate && entryTime <= shiftEndDate;
       });
 
-      await updateClientLastCheckIn(
-        incidentClient.id,
-        `INCIDENT: ${incidentType} ${incidentTimestamp}`
-      );
+      // Count deliveries (success) - entries that are NOT issues
+      const deliveredDuringShift = entriesDuringShift.filter(visit => 
+        !isIssueEntry(visit.client.lastCheckIn)
+      ).length;
 
-      await handleIncidentReportSuccess();
-    },
-    [incidentClient, currentDriver.id, handleIncidentReportSuccess]
-  );
+      // Count issues - entries that ARE issues
+      const issuesDuringShift = entriesDuringShift.filter(visit => 
+        isIssueEntry(visit.client.lastCheckIn)
+      ).length;
+
+      // Get client IDs for successful deliveries only (for distance calculation)
+      const deliveredClientIds = new Set(
+        entriesDuringShift
+          .filter(visit => !isIssueEntry(visit.client.lastCheckIn))
+          .map(v => v.client.id)
+      );
+      
+      // Calculate GPS distance ONLY for successful deliveries
+      const distanceDuringShift = (optimizedTodayVisitsWithMeta ?? []).reduce((total, visit) => {
+        if (!visit?.client) return total;
+        
+        if (!deliveredClientIds.has(visit.client.id)) return total;
+        
+        if (visit.distanceFromPreviousKm) {
+          return total + visit.distanceFromPreviousKm;
+        }
+        return total;
+      }, 0);
+
+      // Count remaining pending tasks for TODAY only
+      const remainingPending = (todayVisits ?? []).filter(visit => {
+        if (!visit?.client) return false;
+        return !Boolean(
+          visit.client.clientSignature ||
+          visit.client.lastSignature ||
+          visit.client.driverSignature ||
+          visit.client.lastCheckIn?.trim()
+        );
+      }).length;
+
+      setShiftSummary({
+        startTime: shiftStartTime || endTime,
+        endTime,
+        duration,
+        deliveredCount: deliveredDuringShift,
+        issueCount: issuesDuringShift,
+        pendingCount: remainingPending,
+        totalDistanceKm: Math.round(distanceDuringShift * 10) / 10
+      });
+
+      setShowEndShiftModal(false);
+      setShowSummaryModal(true);
+    } catch (err) {
+      console.error('Failed to end shift:', err);
+      alert('Грешка при завършване на смяната. Моля, опитайте отново.');
+    }
+  };
+
+  const handleConfirmSummary = () => {
+    try {
+      setIsShiftActive(false);
+      setShiftStartTime(null);
+      setShiftSummary(null);
+      setShowSummaryModal(false);
+      clearShiftFromStorage();
+    } catch (err) {
+      console.error('Failed to confirm summary:', err);
+    }
+  };
+
+  const handleLogoutWithCheck = () => {
+    if (isShiftActive) {
+      const confirm = window.confirm('Имате активна смяна. Сигурни ли сте, че искате да излезете без да я завършите?');
+      if (!confirm) return;
+    }
+    void onLogout();
+  };
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50">
@@ -613,10 +846,15 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
                   Маршрут: <span className="font-medium text-slate-100">{currentDriver.routeArea}</span>
                 </p>
               ) : null}
+              {isShiftActive && shiftStartTime ? (
+                <p className="mt-1 text-xs text-emerald-400">
+                  🟢 Смяна активна • {formatDuration(shiftStartTime)}
+                </p>
+              ) : null}
             </div>
             <button
               type="button"
-              onClick={() => void onLogout()}
+              onClick={handleLogoutWithCheck}
               className="rounded-full border border-slate-700 px-3 py-1 text-xs font-medium text-slate-300 hover:bg-slate-800"
             >
               Изход
@@ -624,9 +862,27 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
           </div>
         </header>
 
-        <div className="relative z-0 mb-4 rounded-2xl bg-slate-900/80 p-3 shadow-lg ring-1 ring-slate-800">
-          <div className="h-64 w-full overflow-hidden rounded-xl">
-            <MapContainer center={[mapFallbackCenter.lat, mapFallbackCenter.lng]} zoom={12} className="h-full w-full">
+        {!isShiftActive ? (
+          <div className="flex flex-1 flex-col items-center justify-center">
+            <div className="text-center">
+              <p className="mb-4 text-slate-400">За да видите маршрута си, първо започнете смяната.</p>
+              <button
+                type="button"
+                onClick={handleStartShift}
+                className="rounded-2xl bg-emerald-600 px-8 py-4 text-lg font-bold text-white shadow-lg hover:bg-emerald-500 active:scale-95 transition-transform"
+              >
+                🚗 ЗАПОЧНИ СМЯНА
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+          <div className="relative z-0 mb-4 h-64 rounded-2xl bg-slate-900/80 p-3 shadow-lg ring-1 ring-slate-800">
+            <MapContainer
+              center={[mapFallbackCenter.lat, mapFallbackCenter.lng]}
+              zoom={12}
+              className="h-full w-full rounded-xl"
+            >
               <MapBoundsController
                 coordinates={mapBoundsPoints}
                 fallbackCenter={mapFallbackCenter}
@@ -661,7 +917,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
                         <p className="font-semibold text-slate-900">{visit.client.name}</p>
                         <p className="text-slate-600">{visit.client.address}</p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Статус: {isDelivered ? 'Delivered' : 'Pending'}
+                          Статус: {isDelivered ? 'Доставено' : 'Предстои'}
                         </p>
                       </div>
                     </Popup>
@@ -670,43 +926,209 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
               })}
             </MapContainer>
           </div>
-          <p className="mt-2 text-xs text-slate-400">Маркерите са зелени при доставено, сини при предстоящо.</p>
-        </div>
 
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Твоят маршрут</h2>
-          {driverClientsLoading ? <span className="text-sm text-slate-500">Зареждане...</span> : null}
-        </div>
-        {isLocationLoading ? (
-          <p className="mb-3 rounded-lg bg-slate-900/60 px-3 py-2 text-xs text-slate-300 ring-1 ring-slate-800">
-            Определяне на текущата позиция...
-          </p>
-        ) : null}
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Твоят маршрут</h2>
+            {driverClientsLoading ? <span className="text-sm text-slate-500">Зареждане...</span> : null}
+          </div>
 
-        {driverClientsError ? (
-          <p className="mb-3 rounded-lg bg-red-900/40 px-3 py-2 text-xs text-red-200">{driverClientsError}</p>
-        ) : null}
-
-        <div className="flex-1 space-y-4 overflow-y-auto pb-4">
-          {driverClientsLoading ? (
-            <p className="text-sm text-slate-500">Зареждане на клиентите по маршрута...</p>
-          ) : driverVisits.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              Нямате планирани посещения. Проверете графика си или се свържете с администратора.
+          {isLocationLoading ? (
+            <p className="mb-3 rounded-lg bg-slate-900/60 px-3 py-2 text-xs text-slate-300 ring-1 ring-slate-800">
+              Определяне на текущата позиция...
             </p>
-          ) : (
-            <DriverRoute
-              todayVisits={toRouteVisit(optimizedTodayVisitsWithMeta)}
-              tomorrowVisits={toRouteVisit(tomorrowVisits)}
-              upcomingVisits={toRouteVisit(upcomingVisits)}
-              driverActionClientId={driverActionClientId}
-              onCheckIn={client => handleOpenSignatureModal(client)}
-              onIncident={client => handleOpenIncident(client)}
-              renderLastCheckInStatus={renderLastCheckInStatus}
-            />
-          )}
-        </div>
+          ) : null}
+
+          {driverClientsError ? (
+            <p className="mb-3 rounded-lg bg-red-900/40 px-3 py-2 text-xs text-red-200">{driverClientsError}</p>
+          ) : null}
+
+          <div className="flex-1 space-y-4 overflow-y-auto pb-20">
+            {driverClientsLoading ? (
+              <p className="text-sm text-slate-500">Зареждане на клиентите по маршрута...</p>
+            ) : !driverVisits || driverVisits.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Нямате планирани посещения. Проверете графика си или се свържете с администратора.
+              </p>
+            ) : (
+              <DriverRoute
+                todayVisits={toRouteVisit(optimizedTodayVisitsWithMeta ?? [])}
+                tomorrowVisits={toRouteVisit(tomorrowVisits ?? [])}
+                upcomingVisits={toRouteVisit(upcomingVisits ?? [])}
+                driverActionClientId={driverActionClientId}
+                onCheckIn={client => client && handleOpenSignatureModal(client)}
+                onIncident={client => handleOpenIncident(client)}
+                renderLastCheckInStatus={renderLastCheckInStatus}
+                isShiftActive={isShiftActive}
+              />
+            )}
+          </div>
+
+          <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-slate-950 via-slate-950 to-transparent p-4">
+            <div className="mx-auto max-w-lg">
+              <button
+                type="button"
+                onClick={() => setShowEndShiftModal(true)}
+                className="w-full rounded-2xl bg-red-600 px-6 py-3 text-base font-bold text-white shadow-lg hover:bg-red-500 active:scale-95 transition-transform"
+              >
+                🛑 ЗАВЪРШИ СМЯНА
+              </button>
+            </div>
+          </div>
+          </>
+        )}
       </section>
+
+      {showStartShiftModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-slate-900 p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-bold text-white">Започване на смяна</h3>
+            <p className="mb-6 text-sm text-slate-400">
+              Сигурни ли сте, че искате да започнете смяната?
+            </p>
+            <div className="mb-4 rounded-lg bg-slate-800 p-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Доставени днес:</span>
+                <span className="font-bold text-emerald-400">{deliveredTodayCount}</span>
+              </div>
+              <div className="mt-2 flex justify-between text-sm">
+                <span className="text-slate-400">Оставащи задачи:</span>
+                <span className="font-bold text-amber-400">{pendingTodayCount}</span>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowStartShiftModal(false)}
+                className="flex-1 rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800"
+              >
+                Отказ
+              </button>
+              <button
+                type="button"
+                onClick={handleStartShift}
+                className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500"
+              >
+                Започни
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEndShiftModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-slate-900 p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-bold text-white">Завършване на смяна</h3>
+            <p className="mb-6 text-sm text-slate-400">
+              Прегледайте статуса преди да завършите смяната:
+            </p>
+            <div className="mb-4 space-y-4 rounded-lg bg-slate-800 p-4">
+              <div className="flex items-center justify-between py-1">
+                <span className="text-sm font-medium text-emerald-300">Доставени:</span>
+                <span className="text-2xl font-bold text-emerald-400">{actualDeliveredTodayCount}</span>
+              </div>
+              <div className="flex items-center justify-between py-1">
+                <span className="text-sm font-medium text-amber-300">С проблем:</span>
+                <span className={`text-2xl font-bold ${issueTodayCount > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
+                  {issueTodayCount}
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-1 border-t border-slate-700 pt-3">
+                <span className="text-sm font-bold text-red-500">Оставащи:</span>
+                <span className="text-2xl font-bold text-red-500">{pendingTodayCount}</span>
+              </div>
+            </div>
+            
+            {pendingTodayCount > 0 && (
+              <div className="mb-4 rounded-lg bg-red-900/30 p-3 text-xs text-red-200">
+                ⚠️ Имате {pendingTodayCount} недовършени задачи. Сигурни ли сте, че искате да завършите?
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowEndShiftModal(false)}
+                className="flex-1 rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800"
+              >
+                ← Назад
+              </button>
+              <button
+                type="button"
+                onClick={handleEndShift}
+                className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-500"
+              >
+                Завърши смяната
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSummaryModal && shiftSummary && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="mb-6 text-center text-xl font-bold text-slate-900">📋 Дневен отчет</h3>
+            
+            <div className="space-y-4">
+              <div className="flex justify-between border-b border-slate-200 pb-2">
+                <span className="text-slate-600">Начало на смяната:</span>
+                <span className="font-medium text-slate-900">
+                  {new Date(shiftSummary.startTime).toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-slate-200 pb-2">
+                <span className="text-slate-600">Край на смяната:</span>
+                <span className="font-medium text-slate-900">
+                  {new Date(shiftSummary.endTime).toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-slate-200 pb-2">
+                <span className="text-slate-600">Продължителност на смяната:</span>
+                <span className="font-bold text-blue-600">{shiftSummary.duration}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-200 pb-2">
+                <span className="font-medium text-emerald-600">Доставени порции:</span>
+                <span className="text-2xl font-bold text-emerald-600">{shiftSummary.deliveredCount}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-200 pb-2">
+                <span className="font-medium text-amber-500">Докладвани проблеми:</span>
+                <span className={`text-xl font-bold ${shiftSummary.issueCount > 0 ? 'text-amber-500' : 'text-slate-400'}`}>
+                  {shiftSummary.issueCount}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-slate-200 pb-3 pt-1">
+                <span className="font-bold text-red-600">Неизпълнени задачи:</span>
+                <span className="text-2xl font-bold text-red-600">{shiftSummary.pendingCount}</span>
+              </div>
+              <div className="flex justify-between pt-2">
+                <span className="text-slate-600">Общо изминати км (GPS):</span>
+                <span className="font-bold text-blue-600">{shiftSummary.totalDistanceKm} км</span>
+              </div>
+            </div>
+
+            {shiftSummary.issueCount > 0 && (
+              <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                ⚠️ Докладвани са {shiftSummary.issueCount} проблема по време на смяната.
+              </div>
+            )}
+
+            {shiftSummary.pendingCount > 0 && (
+              <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">
+                ⚠️ Имате {shiftSummary.pendingCount} неизпълнени доставки за днес.
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleConfirmSummary}
+              className="mt-8 w-full rounded-xl bg-emerald-600 px-6 py-3 text-base font-bold text-white shadow hover:bg-emerald-500"
+            >
+              ✓ Потвърди и изпрати
+            </button>
+          </div>
+        </div>
+      )}
 
       {isIncidentModalOpen && incidentClient ? (
         <IncidentReporter

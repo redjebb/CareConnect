@@ -13,6 +13,9 @@ export type CompleteDeliveryPayload = {
   timestamp?: Date;
   mealType?: string;
   mealCount?: number;
+  status?: 'success' | 'issue';
+  issueType?: string;
+  issueDescription?: string;
 };
 
 const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
@@ -39,7 +42,7 @@ export const completeDelivery = async (payload: CompleteDeliveryPayload & { egn:
   const docRef = await addDoc(collection(db, 'deliveryHistory'), {
     ...payload,
     timestamp: Timestamp.fromDate(payload.timestamp || new Date()),
-    status: 'success',
+    status: payload.status || 'success',
   });
 
   return { id: docRef.id };

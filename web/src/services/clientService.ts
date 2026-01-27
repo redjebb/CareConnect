@@ -5,10 +5,8 @@ import {
   doc,
   getDocs,
   query,
-  Timestamp,
   updateDoc,
-  where,
-  writeBatch
+  where
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Client, ClientHistoryEntry } from '../types';
@@ -69,33 +67,9 @@ export async function getClientHistory(egn: string): Promise<ClientHistoryEntry[
   });
 }
 
-export async function deleteClient(id: string, deleteHistory: boolean = false): Promise<void> {
-  const batch = writeBatch(db);
-
-  // 1. Delete the client document
+export async function deleteClient(id: string): Promise<void> {
   const clientDoc = doc(db, 'clients', id);
-  batch.delete(clientDoc);
-
-  // 2. Delete all schedule items for this client
-  const scheduleCollection = collection(db, 'schedule');
-  const scheduleQuery = query(scheduleCollection, where('clientId', '==', id));
-  const scheduleSnapshot = await getDocs(scheduleQuery);
-  scheduleSnapshot.docs.forEach(docSnapshot => {
-    batch.delete(doc(db, 'schedule', docSnapshot.id));
-  });
-
-  // 3. Optionally delete delivery history for this client
-  if (deleteHistory) {
-    const deliveryHistoryCollection = collection(db, 'deliveryHistory');
-    const historyQuery = query(deliveryHistoryCollection, where('clientId', '==', id));
-    const historySnapshot = await getDocs(historyQuery);
-    historySnapshot.docs.forEach(docSnapshot => {
-      batch.delete(doc(db, 'deliveryHistory', docSnapshot.id));
-    });
-  }
-
-  // Commit all deletions atomically
-  await batch.commit();
+  await deleteDoc(clientDoc);
 }
 
 export async function updateClientLastCheckIn(id: string, lastCheckIn: string): Promise<void> {
@@ -116,25 +90,4 @@ export async function updateClientSignatures(
     lastSignature: clientSignature,
     lastCheckIn
   });
-}
-
-export async function deleteDeliveryFromHistory(clientId: string, date: Date): Promise<void> {
-  const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
-  const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
-
-  const deliveryHistoryCollection = collection(db, 'deliveryHistory');
-  const historyQuery = query(
-    deliveryHistoryCollection,
-    where('clientId', '==', clientId),
-    where('timestamp', '>=', Timestamp.fromDate(startOfDay)),
-    where('timestamp', '<=', Timestamp.fromDate(endOfDay))
-  );
-
-  const snapshot = await getDocs(historyQuery);
-  
-  const deletePromises = snapshot.docs.map(docSnapshot => 
-    deleteDoc(doc(db, 'deliveryHistory', docSnapshot.id))
-  );
-
-  await Promise.all(deletePromises);
 }

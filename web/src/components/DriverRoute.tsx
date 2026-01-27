@@ -16,6 +16,7 @@ interface DriverRouteProps {
   onCheckIn: (client: Client) => void;
   onIncident: (client: Client) => void;
   renderLastCheckInStatus: (lastCheckIn: string | undefined) => ReactNode;
+  isShiftActive?: boolean;
 }
 
 const formatVisitDateForCard = (date: Date) =>
@@ -41,7 +42,8 @@ function VisitSection({
   driverActionClientId,
   onCheckIn,
   onIncident,
-  renderLastCheckInStatus
+  renderLastCheckInStatus,
+  isShiftActive
 }: {
   title: string;
   visits: DriverVisit[];
@@ -49,6 +51,7 @@ function VisitSection({
   onCheckIn: (client: Client) => void;
   onIncident: (client: Client) => void;
   renderLastCheckInStatus: (lastCheckIn: string | undefined) => ReactNode;
+  isShiftActive: boolean;
 }) {
   return (
     <section className="space-y-3 rounded-2xl bg-slate-900/60 p-4 shadow-lg ring-1 ring-slate-800" key={title}>
@@ -128,7 +131,7 @@ function VisitSection({
                 </button>
                 <button
                   type="button"
-                  disabled={driverActionClientId === client.id}
+                  disabled={driverActionClientId === client.id || !isShiftActive}
                   onClick={() => onIncident(client)}
                   className="rounded-xl bg-red-500 px-3 py-3 text-sm font-semibold text-white shadow-lg shadow-red-500/40 hover:bg-red-400 active:scale-[0.98] disabled:opacity-60"
                 >
@@ -150,7 +153,8 @@ export default function DriverRoute({
   driverActionClientId,
   onCheckIn,
   onIncident,
-  renderLastCheckInStatus
+  renderLastCheckInStatus,
+  isShiftActive = true
 }: DriverRouteProps) {
   return (
     <>
@@ -161,6 +165,7 @@ export default function DriverRoute({
         onCheckIn={onCheckIn}
         onIncident={onIncident}
         renderLastCheckInStatus={renderLastCheckInStatus}
+        isShiftActive={isShiftActive}
       />
       <VisitSection
         title="Утре"
@@ -169,6 +174,7 @@ export default function DriverRoute({
         onCheckIn={onCheckIn}
         onIncident={onIncident}
         renderLastCheckInStatus={renderLastCheckInStatus}
+        isShiftActive={isShiftActive}
       />
       <VisitSection
         title="Предстоящи"
@@ -177,6 +183,7 @@ export default function DriverRoute({
         onCheckIn={onCheckIn}
         onIncident={onIncident}
         renderLastCheckInStatus={renderLastCheckInStatus}
+        isShiftActive={isShiftActive}
       />
     </>
   );

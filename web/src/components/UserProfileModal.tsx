@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ClientHistoryEntry, ClientRegistryEntry } from '../types';
 import { getClientMonthlyReport } from '../services/reportService';
 
@@ -11,11 +11,13 @@ interface UserProfileModalProps {
   onClose: () => void;
 }
 
-type MonthlyDelivery = {
+type MonthlyDeliveryData = {
+  id: string;
   date: string;
   time: string;
   mealType: string;
   mealCount: number;
+  status: string;
 };
 
 const getSafeDate = (val: any): Date | null => {
@@ -27,13 +29,13 @@ const getSafeDate = (val: any): Date | null => {
 };
 
 const extractHistoryDate = (entry: ClientHistoryEntry): Date | null => {
-  const serviceDate = entry.serviceDate?.trim();
+  const serviceDate = entry?.serviceDate?.trim();
   if (serviceDate) {
     const parsed = new Date(serviceDate);
     if (!Number.isNaN(parsed.getTime())) return parsed;
   }
 
-  const lastCheckIn = entry.lastCheckIn?.trim();
+  const lastCheckIn = entry?.lastCheckIn?.trim();
   if (lastCheckIn) {
     const isoMatch = lastCheckIn.match(/\d{4}-\d{2}-\d{2}T[^\s]+/);
     const candidate = isoMatch ? isoMatch[0] : lastCheckIn;
@@ -41,7 +43,7 @@ const extractHistoryDate = (entry: ClientHistoryEntry): Date | null => {
     if (!Number.isNaN(parsed.getTime())) return parsed;
   }
 
-  const createdAt = entry.createdAt?.trim();
+  const createdAt = entry?.createdAt?.trim();
   if (createdAt) {
     const parsed = new Date(createdAt);
     if (!Number.isNaN(parsed.getTime())) return parsed;
@@ -64,9 +66,9 @@ const formatHistoryDate = (entry: ClientHistoryEntry) => {
 };
 
 const getSignatureUrl = (entry: ClientHistoryEntry) =>
-  entry.clientSignature ?? entry.lastSignature ?? entry.driverSignature ?? null;
+  entry?.clientSignature ?? entry?.lastSignature ?? entry?.driverSignature ?? null;
 
-const isDelivered = (entry: ClientHistoryEntry) => Boolean(getSignatureUrl(entry) || entry.lastCheckIn?.trim());
+const isDelivered = (entry: ClientHistoryEntry) => Boolean(getSignatureUrl(entry) || entry?.lastCheckIn?.trim());
 
 const monthInputValueFromDate = (date: Date) => {
   const y = date.getFullYear();
@@ -103,39 +105,62 @@ export default function UserProfileModal({
   // Guard
   if (!isOpen || !entry) return null;
 
-  const safeHistory = Array.isArray(history) ? history : [];
-
   // State
   const [reportDate, setReportDate] = useState(new Date());
-  const [monthlyDeliveries, setMonthlyDeliveries] = useState<MonthlyDelivery[]>([]); // ✅ always []
+  const [currentMonthData, setCurrentMonthData] = useState<MonthlyDeliveryData[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
 
-  // Timestamp-safe date extraction (Firestore Timestamp, {seconds}, Date/string/number)
-  const getHistoryTimestampDate = (item: any): Date | null => {
-    const ts = item?.timestamp;
-    if (!ts) return null;
-    if (typeof ts?.toDate === 'function') {
-      const d = ts.toDate();
-      return Number.isNaN(d.getTime()) ? null : d;
+  // Auto-fetch deliveries when month or EGN changes
+  useEffect(() => {
+    const egn = entry?.egn?.trim();
+    if (!egn) {
+      setCurrentMonthData([]);
+      return;
     }
-    if (typeof ts?.seconds === 'number') {
-      const d = new Date(ts.seconds * 1000);
-      return Number.isNaN(d.getTime()) ? null : d;
-    }
-    if (ts instanceof Date || typeof ts === 'string' || typeof ts === 'number') {
-      const d = new Date(ts);
-      return Number.isNaN(d.getTime()) ? null : d;
-    }
-    return null;
-  };
 
-  const sortedHistory = useMemo(() => {
-    return [...safeHistory].sort((a, b) => {
-      const dateA = (getHistoryTimestampDate(a) ?? extractHistoryDate(a))?.getTime() ?? 0;
-      const dateB = (getHistoryTimestampDate(b) ?? extractHistoryDate(b))?.getTime() ?? 0;
-      return dateB - dateA;
-    });
-  }, [safeHistory]); // getHistoryTimestampDate is defined in-component; safe for this use
+    let isCancelled = false;
+
+    const fetchDeliveries = async () => {
+      setReportLoading(true);
+      try {
+        const data = await getClientMonthlyReport(egn, reportDate);
+        
+        if (isCancelled) return;
+
+        const deliveriesRaw = (data as any)?.deliveries || [];
+
+        // Map results into clean format
+        const normalized: MonthlyDeliveryData[] = deliveriesRaw.map((row: any, index: number) => {
+          const d = getSafeDate(row?.timestamp);
+          return {
+            id: row?.id || `delivery-${index}`,
+            date: d ? d.toLocaleDateString('bg-BG', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-',
+            time: d ? d.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' }) : '-',
+            mealType: row?.mealType || '—',
+            mealCount: Number(row?.mealCount) || 1,
+            status: row?.status || 'success'
+          };
+        });
+
+        setCurrentMonthData(normalized);
+      } catch (err) {
+        console.error('Error fetching monthly deliveries:', err);
+        if (!isCancelled) {
+          setCurrentMonthData([]);
+        }
+      } finally {
+        if (!isCancelled) {
+          setReportLoading(false);
+        }
+      }
+    };
+
+    void fetchDeliveries();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [reportDate, entry?.egn]);
 
   const reportPeriodLabel = useMemo(() => {
     try {
@@ -145,55 +170,24 @@ export default function UserProfileModal({
     }
   }, [reportDate]);
 
-
-  const displayHistory = useMemo(() => {
-    return monthlyDeliveries.length > 0 ? monthlyDeliveries : safeHistory;
-  }, [monthlyDeliveries, safeHistory]);
-
+  // Calculate portions from currentMonthData only
   const deliveredPortionsThisMonth = useMemo(() => {
-    return displayHistory.reduce((sum, item: any) => {
+    if (currentMonthData.length === 0) return 0;
+    return currentMonthData.reduce((sum, item) => {
       const n = Number(item?.mealCount);
-      if (Number.isFinite(n) && n > 0) return sum + n;
-      return sum + 1;
+      return sum + (Number.isFinite(n) && n > 0 ? n : 1);
     }, 0);
-  }, [displayHistory]);
+  }, [currentMonthData]);
 
   const handleGenerateReport = async () => {
-    try {
-      setReportLoading(true);
-      
-      const data = await (getClientMonthlyReport as any)(entry.egn, reportDate);
-      
-      const deliveriesRaw = (data as any)?.deliveries || [];
-
-      if (deliveriesRaw.length === 0) {
-        setMonthlyDeliveries([]);
-        alert('Няма данни за избрания период');
-        return;
-      }
-
-      const normalized = deliveriesRaw.map((row: any) => {
-        const d = getSafeDate(row.timestamp);
-        return {
-          date: d ? d.toLocaleDateString('bg-BG', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-',
-          time: d ? d.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' }) : '-',
-          mealType: row.mealType || '—',
-          mealCount: row.mealCount || 0
-        };
-      });
-
-      setMonthlyDeliveries(normalized);
-
-      setTimeout(() => {
-        window.print();
-      }, 500);
-
-    } catch (err) {
-      console.error(err);
-      alert('Грешка при зареждане на данните.');
-    } finally {
-      setReportLoading(false);
+    if (currentMonthData.length === 0) {
+      alert('Няма данни за избрания период');
+      return;
     }
+
+    setTimeout(() => {
+      window.print();
+    }, 500);
   };
 
   return (
@@ -235,47 +229,38 @@ export default function UserProfileModal({
           </div>
         </div>
 
-        {/* History Section */}
+        {/* History Section - uses currentMonthData only */}
         <div className="px-6 py-6">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-700">История на доставките</h3>
-            {isLoading ? <span className="text-xs text-slate-500">Зареждане...</span> : null}
+            {reportLoading ? <span className="text-xs text-slate-500">Зареждане...</span> : null}
           </div>
 
           {errorMessage ? (
             <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{errorMessage}</p>
           ) : null}
 
-          {isLoading ? (
+          {reportLoading ? (
             <p className="mt-4 text-sm text-slate-500">Зареждане на история...</p>
-          ) : sortedHistory.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-500">Няма намерена история за този клиент.</p>
+          ) : currentMonthData.length === 0 ? (
+            <p className="mt-4 text-sm text-slate-500">Няма намерена история за този клиент за избрания месец.</p>
           ) : (
             <div className="mt-4 overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 text-sm">
                 <thead>
                   <tr className="text-left text-slate-500">
                     <th className="px-3 py-2 font-medium">Дата</th>
+                    <th className="px-3 py-2 font-medium">Час</th>
                     <th className="px-3 py-2 font-medium">Статус</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {sortedHistory.map(item => {
-                    const delivered = isDelivered(item);
-                    const itemDate = getSafeDate((item as any).timestamp);
+                  {currentMonthData.map((item, index) => {
+                    const delivered = item.status === 'success';
                     return (
-                      <tr key={item.id}>
-                        <td className="px-3 py-3 text-slate-600">
-                          {itemDate
-                            ? itemDate.toLocaleString('bg-BG', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })
-                            : '-'}
-                        </td>
+                      <tr key={item.id || `row-${index}`}>
+                        <td className="px-3 py-3 text-slate-600">{item.date}</td>
+                        <td className="px-3 py-3 text-slate-600">{item.time}</td>
                         <td className="px-3 py-3">
                           <span
                             className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
@@ -285,7 +270,7 @@ export default function UserProfileModal({
                             <span
                               className={`h-2 w-2 rounded-full ${delivered ? 'bg-emerald-500' : 'bg-amber-500'}`}
                             />
-                            {delivered ? 'Delivered' : 'Pending'}
+                            {delivered ? 'Доставено' : 'Предстои'}
                           </span>
                         </td>
                       </tr>
@@ -314,7 +299,6 @@ export default function UserProfileModal({
                     value={monthInputValueFromDate(reportDate)}
                     onChange={e => {
                       const raw = e.target.value;
-                      // ✅ if empty, default to current month
                       setReportDate(raw ? dateFromMonthInputValue(raw) : new Date());
                     }}
                     className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
@@ -327,13 +311,13 @@ export default function UserProfileModal({
                   disabled={reportLoading}
                   className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-500 disabled:opacity-60"
                 >
-                  {reportLoading ? 'Генериране...' : 'Генерирай месечен отчет'}
+                  {reportLoading ? 'Зареждане...' : 'Генерирай месечен отчет'}
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Print Content: Name/EGN/Address + Date/Time/Menu/Count table */}
+          {/* Print Content */}
           <div id="printable-report">
             <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 0.5 }}>
               МЕСЕЧЕН ОТЧЕТ ЗА ДОСТАВКА НА ХРАНА
@@ -347,29 +331,21 @@ export default function UserProfileModal({
               <div><strong>ЕГН:</strong> {entry?.egn ?? ''}</div>
               <div><strong>Адрес:</strong> {entry?.address ?? ''}</div>
               <div><strong>Месец:</strong> {reportPeriodLabel}</div>
-              <div style={{ marginTop: 8 }}><strong>Общ брой доставки за месеца:</strong> {monthlyDeliveries.length}</div>
+              <div style={{ marginTop: 8 }}><strong>Общ брой доставки за месеца:</strong> {currentMonthData.length}</div>
             </div>
 
             <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 14, fontSize: 12 }}>
               <thead>
                 <tr>
-                  <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>
-                    Дата
-                  </th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>
-                    Час
-                  </th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>
-                    Меню
-                  </th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>
-                    Брой
-                  </th>
+                  <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>Дата</th>
+                  <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>Час</th>
+                  <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>Меню</th>
+                  <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>Брой</th>
                 </tr>
               </thead>
               <tbody>
-                {monthlyDeliveries.map((d, idx) => (
-                  <tr key={`${d.date}-${d.time}-${idx}`}>
+                {currentMonthData.map((d, idx) => (
+                  <tr key={d.id || `print-${idx}`}>
                     <td style={{ border: '1px solid #e2e8f0', padding: 8 }}>{d.date}</td>
                     <td style={{ border: '1px solid #e2e8f0', padding: 8 }}>{d.time}</td>
                     <td style={{ border: '1px solid #e2e8f0', padding: 8 }}>{d.mealType}</td>
@@ -380,8 +356,6 @@ export default function UserProfileModal({
             </table>
           </div>
         </div>
-
-        {/* ...existing code... */}
       </div>
     </div>
   );
