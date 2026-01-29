@@ -64,7 +64,13 @@ type AdminDailyListViewProps = {
   // helpers
   formatNextVisitDate: (value?: string | null) => string;
   renderLastCheckInStatus: (lastCheckIn: string | undefined) => ReactNode;
-  onOpenSignaturePreview: (driverUrl: string | null, clientUrl: string | null) => void;
+  onOpenSignaturePreview: (item: {
+    name?: string;
+    clientName?: string;
+    clientSignature?: string | null;
+    driverSignature?: string | null;
+    lastCheckIn?: string | null;
+  }) => void;
 };
 
 export default function AdminDailyListView({
@@ -329,21 +335,23 @@ export default function AdminDailyListView({
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             {renderLastCheckInStatus(client.lastCheckIn)}
-                            {client.driverSignature || client.clientSignature || client.lastSignature ? (
+                            {(client.driverSignature || client.clientSignature || client.lastSignature) && (
                               <button
                                 type="button"
                                 title="Виж подпис"
                                 onClick={() =>
-                                  onOpenSignaturePreview(
-                                    client.driverSignature ?? null,
-                                    client.clientSignature ?? client.lastSignature ?? null
-                                  )
+                                  onOpenSignaturePreview({
+                                    name: client.name,
+                                    clientSignature: client.clientSignature || client.lastSignature || null,
+                                    driverSignature: client.driverSignature || null,
+                                    lastCheckIn: client.lastCheckIn || null
+                                  })
                                 }
                                 className="inline-flex items-center rounded-md border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
                               >
                                 ✍️ Подпис
                               </button>
-                            ) : null}
+                            )}
                           </div>
                         </td>
 

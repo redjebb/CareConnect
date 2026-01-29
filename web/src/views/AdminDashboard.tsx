@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { useAdminData } from '../hooks/useAdminData';
 import AdminDailyListView from './AdminDailyListView';
 import AdminDriversView from './AdminDriversView';
 import AdminAdminsManagementView from './AdminAdminsManagementView';
 import AdminRegistryView from './AdminRegistryView';
 import UserProfileModal from '../components/UserProfileModal';
+import SignatureViewerModal from '../components/SignatureViewerModal';
 
 const CITY_DATA: Record<string, string[]> = {
   София: [
@@ -128,6 +130,39 @@ interface AdminDashboardProps {
 export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: AdminDashboardProps) {
   const adminData = useAdminData(isMasterAdmin);
 
+  // Signature Modal State
+  const [isSigModalOpen, setIsSigModalOpen] = useState(false);
+  const [selectedSigData, setSelectedSigData] = useState<{
+    clientName: string;
+    client: string;
+    driver: string;
+    timestamp: string;
+  }>({
+    clientName: '',
+    client: '',
+    driver: '',
+    timestamp: ''
+  });
+
+  // Handler for opening signature preview
+  const handleOpenSignaturePreview = (item: {
+    name?: string;
+    clientName?: string;
+    clientSignature?: string | null;
+    driverSignature?: string | null;
+    lastCheckIn?: string | null;
+    timestamp?: string | null;
+  }) => {
+    console.log('Opening signature preview for:', item);
+    setSelectedSigData({
+      clientName: item.name || item.clientName || 'Неизвестен клиент',
+      client: item.clientSignature || '',
+      driver: item.driverSignature || '',
+      timestamp: item.lastCheckIn || item.timestamp || ''
+    });
+    setIsSigModalOpen(true);
+  };
+
   const {
     // nav
     currentView,
@@ -182,7 +217,6 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
     reportGenerating,
     handleGenerateMonthlyReport,
     handleDeleteClient,
-    handleOpenSignaturePreview,
 
     // registry
     registryForm,
@@ -422,6 +456,16 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
           isLoading={profileLoading}
           errorMessage={profileError}
           onClose={handleCloseProfile}
+        />
+
+        {/* Signature Viewer Modal - MUST BE AT THE VERY END */}
+        <SignatureViewerModal
+          isOpen={isSigModalOpen}
+          onClose={() => setIsSigModalOpen(false)}
+          clientName={selectedSigData.clientName}
+          client={selectedSigData.client}
+          driver={selectedSigData.driver}
+          timestamp={selectedSigData.timestamp}
         />
       </div>
     </main>
