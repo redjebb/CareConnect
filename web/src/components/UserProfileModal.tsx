@@ -18,6 +18,10 @@ type MonthlyDeliveryData = {
   mealType: string;
   mealCount: number;
   status: string;
+  hasIssue?: boolean;
+  completed?: boolean;
+  issueType?: string;
+  issueDescription?: string;
 };
 
 const getSafeDate = (val: any): Date | null => {
@@ -35,15 +39,7 @@ const extractHistoryDate = (entry: ClientHistoryEntry): Date | null => {
     if (!Number.isNaN(parsed.getTime())) return parsed;
   }
 
-  const lastCheckIn = entry?.lastCheckIn?.trim();
-  if (lastCheckIn) {
-    const isoMatch = lastCheckIn.match(/\d{4}-\d{2}-\d{2}T[^\s]+/);
-    const candidate = isoMatch ? isoMatch[0] : lastCheckIn;
-    const parsed = new Date(candidate);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
-
-  const createdAt = entry?.createdAt?.trim();
+  const createdAt = (entry as any)?.createdAt?.trim();
   if (createdAt) {
     const parsed = new Date(createdAt);
     if (!Number.isNaN(parsed.getTime())) return parsed;
@@ -66,9 +62,9 @@ const formatHistoryDate = (entry: ClientHistoryEntry) => {
 };
 
 const getSignatureUrl = (entry: ClientHistoryEntry) =>
-  entry?.clientSignature ?? entry?.lastSignature ?? entry?.driverSignature ?? null;
+  entry?.clientSignature ?? entry?.driverSignature ?? null;
 
-const isDelivered = (entry: ClientHistoryEntry) => Boolean(getSignatureUrl(entry) || entry?.lastCheckIn?.trim());
+const isDelivered = (entry: ClientHistoryEntry) => Boolean(getSignatureUrl(entry));
 
 const monthInputValueFromDate = (date: Date) => {
   const y = date.getFullYear();
@@ -129,7 +125,7 @@ export default function UserProfileModal({
 
         const deliveriesRaw = (data as any)?.deliveries || [];
 
-        // Map results into clean format
+        // Map results into clean format with proper status fields
         const normalized: MonthlyDeliveryData[] = deliveriesRaw.map((row: any, index: number) => {
           const d = getSafeDate(row?.timestamp);
           return {
@@ -138,7 +134,11 @@ export default function UserProfileModal({
             time: d ? d.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' }) : '-',
             mealType: row?.mealType || '—',
             mealCount: Number(row?.mealCount) || 1,
-            status: row?.status || 'success'
+            status: row?.status || '',
+            hasIssue: row?.hasIssue === true,
+            completed: row?.completed === true,
+            issueType: row?.issueType || '',
+            issueDescription: row?.issueDescription || ''
           };
         });
 
@@ -162,6 +162,42 @@ export default function UserProfileModal({
     };
   }, [reportDate, entry?.egn]);
 
+  // Helper function to determine delivery status with priority
+  const getDeliveryStatus = (item: MonthlyDeliveryData): { 
+    type: 'issue' | 'success' | 'pending'; 
+    label: string; 
+    className: string;
+    emoji: string;
+  } => {
+    // Priority 1: Check for issue status
+    if (item.status === 'issue' || item.hasIssue === true) {
+      return {
+        type: 'issue',
+        label: 'ПРОБЛЕМ',
+        className: 'bg-red-100 text-red-700 ring-1 ring-red-200',
+        emoji: '🔴'
+      };
+    }
+    
+    // Priority 2: Check for success/completed status
+    if (item.status === 'success' || item.completed === true) {
+      return {
+        type: 'success',
+        label: 'ДОСТАВЕНО',
+        className: 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200',
+        emoji: '✅'
+      };
+    }
+    
+    // Default: Pending
+    return {
+      type: 'pending',
+      label: 'ПРЕДСТОИ',
+      className: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
+      emoji: '⏳'
+    };
+  };
+
   const reportPeriodLabel = useMemo(() => {
     try {
       return reportDate.toLocaleDateString('bg-BG', { month: 'long', year: 'numeric' });
@@ -170,14 +206,58 @@ export default function UserProfileModal({
     }
   }, [reportDate]);
 
-  // Calculate portions from currentMonthData only
+  // Count total deliveries for the period
+  const totalDeliveriesCount = currentMonthData.length;
+
+  // Count successful deliveries (for display)
+  const successfulDeliveriesCount = useMemo(() => {
+    return currentMonthData.filter(item => {
+      const isIssue = item.status === 'issue' || item.hasIssue === true;
+      const isSuccess = item.status === 'success' || item.completed === true;
+      return isSuccess && !isIssue;
+    }).length;
+  }, [currentMonthData]);
+
+  // Count issues (for display)
+  const issuesCount = useMemo(() => {
+    return currentMonthData.filter(item => 
+      item.status === 'issue' || item.hasIssue === true
+    ).length;
+  }, [currentMonthData]);
+
+  // Calculate portions from ONLY successful deliveries - exclude issues
   const deliveredPortionsThisMonth = useMemo(() => {
     if (currentMonthData.length === 0) return 0;
-    return currentMonthData.reduce((sum, item) => {
-      const n = Number(item?.mealCount);
-      return sum + (Number.isFinite(n) && n > 0 ? n : 1);
-    }, 0);
+    
+    return currentMonthData
+      .filter(item => {
+        const isIssue = item.status === 'issue' || item.hasIssue === true;
+        const isSuccess = item.status === 'success' || item.completed === true;
+        return isSuccess && !isIssue;
+      })
+      .reduce((sum, item) => {
+        const n = Number(item?.mealCount);
+        return sum + (Number.isFinite(n) && n > 0 ? n : 1);
+      }, 0);
   }, [currentMonthData]);
+
+  // Helper to check if delivery is an issue
+  const isDeliveryIssue = (item: MonthlyDeliveryData): boolean => {
+    return item.status === 'issue' || item.hasIssue === true;
+  };
+
+  // Helper to get print status text
+  const getPrintStatusText = (item: MonthlyDeliveryData): string => {
+    if (isDeliveryIssue(item)) return '* ПРОБЛЕМ';
+    if (item.status === 'success' || item.completed === true) return 'Доставено';
+    return 'Предстои';
+  };
+
+  // Helper to get portion count for print (0 for issues)
+  const getPrintPortionCount = (item: MonthlyDeliveryData): number => {
+    if (isDeliveryIssue(item)) return 0;
+    return Number(item.mealCount) || 1;
+  };
 
   const handleGenerateReport = async () => {
     if (currentMonthData.length === 0) {
@@ -192,7 +272,7 @@ export default function UserProfileModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-4xl rounded-2xl bg-white p-6 shadow-xl">
+      <div className="w-full max-w-4xl rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
         {/* Print-only CSS + template visibility */}
         <style>{`
           @media screen {
@@ -220,16 +300,24 @@ export default function UserProfileModal({
           </button>
         </div>
 
-        {/* Green Summary Section */}
-        <div className="px-6 pt-6">
+        {/* Statistics Cards */}
+        <div className="px-6 pt-6 grid gap-4 sm:grid-cols-3">
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-            <div className="text-xs font-semibold text-emerald-800">Общо доставени порции за месеца</div>
-            <div className="mt-2 text-3xl font-semibold text-emerald-700">{deliveredPortionsThisMonth}</div>
-            <div className="mt-1 text-xs text-emerald-700">Период: {reportPeriodLabel}</div>
+            <div className="text-xs font-semibold text-emerald-800">Успешни доставки</div>
+            <div className="mt-2 text-3xl font-bold text-emerald-700">{successfulDeliveriesCount}</div>
+          </div>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <div className="text-xs font-semibold text-blue-800">Общо порции</div>
+            <div className="mt-2 text-3xl font-bold text-blue-700">{deliveredPortionsThisMonth}</div>
+            <div className="mt-1 text-xs text-blue-600">Период: {reportPeriodLabel}</div>
+          </div>
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+            <div className="text-xs font-semibold text-red-800">Проблеми</div>
+            <div className="mt-2 text-3xl font-bold text-red-700">{issuesCount}</div>
           </div>
         </div>
 
-        {/* History Section - uses currentMonthData only */}
+        {/* History Section */}
         <div className="px-6 py-6">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-700">История на доставките</h3>
@@ -245,39 +333,61 @@ export default function UserProfileModal({
           ) : currentMonthData.length === 0 ? (
             <p className="mt-4 text-sm text-slate-500">Няма намерена история за този клиент за избрания месец.</p>
           ) : (
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead>
-                  <tr className="text-left text-slate-500">
-                    <th className="px-3 py-2 font-medium">Дата</th>
-                    <th className="px-3 py-2 font-medium">Час</th>
-                    <th className="px-3 py-2 font-medium">Статус</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {currentMonthData.map((item, index) => {
-                    const delivered = item.status === 'success';
-                    return (
-                      <tr key={item.id || `row-${index}`}>
-                        <td className="px-3 py-3 text-slate-600">{item.date}</td>
-                        <td className="px-3 py-3 text-slate-600">{item.time}</td>
-                        <td className="px-3 py-3">
-                          <span
-                            className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
-                              delivered ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                            }`}
-                          >
-                            <span
-                              className={`h-2 w-2 rounded-full ${delivered ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                            />
-                            {delivered ? 'Доставено' : 'Предстои'}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="mt-4 space-y-3">
+              {currentMonthData.map((item, index) => {
+                const deliveryStatus = getDeliveryStatus(item);
+                const isIssue = deliveryStatus.type === 'issue';
+                
+                return (
+                  <div 
+                    key={item.id || `row-${index}`}
+                    className={`rounded-lg border p-4 ${
+                      isIssue 
+                        ? 'border-red-200 bg-red-50/50' 
+                        : 'border-slate-200 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-medium text-slate-700">
+                          {item.date}
+                        </span>
+                        <span className="text-sm text-slate-500">
+                          {item.time}
+                        </span>
+                      </div>
+                      
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${deliveryStatus.className}`}>
+                        <span>{deliveryStatus.emoji}</span>
+                        {deliveryStatus.label}
+                      </span>
+                    </div>
+
+                    {/* Meal info for successful deliveries */}
+                    {deliveryStatus.type === 'success' && item.mealType && item.mealType !== '—' && (
+                      <div className="mt-2 text-sm text-slate-600">
+                        {item.mealCount}× {item.mealType}
+                      </div>
+                    )}
+
+                    {/* Issue details - show reason in red text below badge */}
+                    {isIssue && (item.issueType || item.issueDescription) && (
+                      <div className="mt-2 rounded-md bg-red-100/50 p-2">
+                        {item.issueType && (
+                          <p className="text-xs font-semibold text-red-700">
+                            Тип: {item.issueType}
+                          </p>
+                        )}
+                        {item.issueDescription && (
+                          <p className="mt-1 text-xs text-red-600">
+                            {item.issueDescription}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -331,29 +441,105 @@ export default function UserProfileModal({
               <div><strong>ЕГН:</strong> {entry?.egn ?? ''}</div>
               <div><strong>Адрес:</strong> {entry?.address ?? ''}</div>
               <div><strong>Месец:</strong> {reportPeriodLabel}</div>
-              <div style={{ marginTop: 8 }}><strong>Общ брой доставки за месеца:</strong> {currentMonthData.length}</div>
             </div>
 
+            {/* Summary Section */}
+            <div style={{ marginTop: 16, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4 }}>
+              <div style={{ fontSize: 12 }}>
+                <div><strong>Общо записи за периода:</strong> {totalDeliveriesCount}</div>
+                <div style={{ color: '#059669', marginTop: 4 }}>
+                  <strong>✓ Успешно доставени:</strong> {successfulDeliveriesCount}
+                </div>
+                <div style={{ color: '#059669' }}>
+                  <strong>✓ Общо доставени порции:</strong> {deliveredPortionsThisMonth}
+                </div>
+                {issuesCount > 0 && (
+                  <div style={{ color: '#dc2626', marginTop: 4 }}>
+                    <strong>✗ Пропуснати/Проблемни:</strong> {issuesCount}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Simplified Table - Only Date, Status, Portions */}
             <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 14, fontSize: 12 }}>
               <thead>
                 <tr>
-                  <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>Дата</th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>Час</th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>Меню</th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: 8, background: '#f8fafc', textAlign: 'left' }}>Брой</th>
+                  <th style={{ border: '1px solid #e2e8f0', padding: 10, background: '#f8fafc', textAlign: 'left', width: '40%' }}>Дата</th>
+                  <th style={{ border: '1px solid #e2e8f0', padding: 10, background: '#f8fafc', textAlign: 'center', width: '35%' }}>Статус</th>
+                  <th style={{ border: '1px solid #e2e8f0', padding: 10, background: '#f8fafc', textAlign: 'center', width: '25%' }}>Брой порции</th>
                 </tr>
               </thead>
               <tbody>
-                {currentMonthData.map((d, idx) => (
-                  <tr key={d.id || `print-${idx}`}>
-                    <td style={{ border: '1px solid #e2e8f0', padding: 8 }}>{d.date}</td>
-                    <td style={{ border: '1px solid #e2e8f0', padding: 8 }}>{d.time}</td>
-                    <td style={{ border: '1px solid #e2e8f0', padding: 8 }}>{d.mealType}</td>
-                    <td style={{ border: '1px solid #e2e8f0', padding: 8 }}>{d.mealCount}</td>
-                  </tr>
-                ))}
+                {currentMonthData.map((d, idx) => {
+                  const isIssue = isDeliveryIssue(d);
+                  const rowBackground = isIssue ? '#fef2f2' : 'transparent';
+                  const portionCount = getPrintPortionCount(d);
+                  const statusText = isIssue ? '* ПРОБЛЕМ' : 'ДОСТАВЕНО';
+                  
+                  return (
+                    <tr key={d.id || `print-${idx}`} style={{ background: rowBackground }}>
+                      <td style={{ border: '1px solid #e2e8f0', padding: 10 }}>
+                        {d.date}
+                      </td>
+                      <td style={{ 
+                        border: '1px solid #e2e8f0', 
+                        padding: 10,
+                        textAlign: 'center',
+                        color: isIssue ? '#dc2626' : '#059669',
+                        fontWeight: 'bold'
+                      }}>
+                        {statusText}
+                      </td>
+                      <td style={{ 
+                        border: '1px solid #e2e8f0', 
+                        padding: 10,
+                        textAlign: 'center',
+                        color: isIssue ? '#dc2626' : 'inherit',
+                        fontWeight: isIssue ? 'bold' : 'normal'
+                      }}>
+                        {portionCount}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
+              {/* Total Row */}
+              <tfoot>
+                <tr style={{ background: '#f1f5f9' }}>
+                  <td style={{ border: '1px solid #e2e8f0', padding: 10, fontWeight: 'bold' }} colSpan={2}>
+                    ОБЩО ДОСТАВЕНИ ПОРЦИИ:
+                  </td>
+                  <td style={{ 
+                    border: '1px solid #e2e8f0', 
+                    padding: 10, 
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    color: '#059669',
+                    fontSize: 14
+                  }}>
+                    {deliveredPortionsThisMonth}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
+
+            {/* Footer note for issues */}
+            {issuesCount > 0 && (
+              <div style={{ marginTop: 12, fontSize: 10, color: '#64748b' }}>
+                * Редовете маркирани с ПРОБЛЕМ не са включени в общия брой доставени порции.
+              </div>
+            )}
+
+            {/* Signature line */}
+            <div style={{ marginTop: 32, fontSize: 12, display: 'flex', justifyContent: 'space-between' }}>
+              <div>
+                <div>Подпис на клиент: _______________________</div>
+              </div>
+              <div>
+                <div>Дата: _______________________</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

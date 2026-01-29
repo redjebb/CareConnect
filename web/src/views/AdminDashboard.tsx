@@ -136,12 +136,10 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
     clientName: string;
     client: string;
     driver: string;
-    timestamp: string;
   }>({
     clientName: '',
     client: '',
-    driver: '',
-    timestamp: ''
+    driver: ''
   });
 
   // Handler for opening signature preview
@@ -151,14 +149,12 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
     clientSignature?: string | null;
     driverSignature?: string | null;
     lastCheckIn?: string | null;
-    timestamp?: string | null;
   }) => {
     console.log('Opening signature preview for:', item);
     setSelectedSigData({
       clientName: item.name || item.clientName || 'Неизвестен клиент',
       client: item.clientSignature || '',
-      driver: item.driverSignature || '',
-      timestamp: item.lastCheckIn || item.timestamp || ''
+      driver: item.driverSignature || ''
     });
     setIsSigModalOpen(true);
   };
@@ -465,7 +461,6 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
           clientName={selectedSigData.clientName}
           client={selectedSigData.client}
           driver={selectedSigData.driver}
-          timestamp={selectedSigData.timestamp}
         />
       </div>
     </main>

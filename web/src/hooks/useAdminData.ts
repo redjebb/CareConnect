@@ -402,11 +402,25 @@ export function useAdminData(isMasterAdmin: boolean) {
         defaultMealCount: Math.max(1, Number(registryForm.defaultMealCount) || 1)
       };
 
-      if (registryEditingId) await updateRegistryEntry(registryEditingId, payload);
-      else await addRegistryEntry(payload);
+      if (registryEditingId) {
+        await updateRegistryEntry(registryEditingId, payload);
+        
+        // Update profileEntry if the edited entry is currently being viewed
+        if (profileEntry?.id === registryEditingId) {
+          setProfileEntry(prev => prev ? { ...prev, ...payload } : null);
+        }
+      } else {
+        await addRegistryEntry(payload);
+      }
 
       resetRegistryForm();
-      await fetchRegistryEntries();
+      
+      // Synchronize ALL data - refresh registry AND clients to reflect name/address changes in Daily List
+      await Promise.all([
+        fetchRegistryEntries(),
+        fetchClients(),
+        fetchScheduleItems()
+      ]);
     } catch (err) {
       console.error('Неуспешно записване в регистъра.', err);
       setRegistryError('Неуспешно записване в регистъра.');
@@ -429,17 +443,53 @@ export function useAdminData(isMasterAdmin: boolean) {
   };
 
   const handleRemoveRegistryEntry = async (entryId: string) => {
+    if (!entryId) return;
+    
     setRegistryDeletingId(entryId);
     setRegistryError(null);
     try {
+      // Find the entry to get its EGN before deletion
+      const entryToDelete = registryEntries.find(e => e?.id === entryId);
+      const egnToDelete = entryToDelete?.egn?.trim();
+      
+      // Delete the registry entry
       await deleteRegistryEntry(entryId);
-      await fetchRegistryEntries();
+      
+      // If entry has EGN, also delete all clients with matching EGN (cascade)
+      if (egnToDelete) {
+        const clientsWithEgn = clients.filter(c => c?.egn?.trim() === egnToDelete);
+        for (const client of clientsWithEgn) {
+          if (client?.id) {
+            try {
+              await deleteClient(client.id);
+              await deleteScheduleByClient(client.id);
+            } catch (err) {
+              console.warn('Failed to cascade delete client:', client.id, err);
+            }
+          }
+        }
+      }
+      
+      // Synchronize ALL data globally
+      await Promise.all([
+        fetchRegistryEntries(),
+        fetchClients(),
+        fetchScheduleItems()
+      ]);
 
+      // Clean up local form state if needed
       if (registryEditingId === entryId) resetRegistryForm();
       if (selectedRegistryEntryId === entryId) {
         setSelectedRegistryEntryId(null);
         setRegistrySearch('');
         setClientForm(prev => ({ ...prev, egn: '' }));
+      }
+      
+      // Close profile modal if viewing deleted entry
+      if (profileEntry?.id === entryId) {
+        setIsProfileModalOpen(false);
+        setProfileEntry(null);
+        setProfileHistory([]);
       }
     } catch (err) {
       console.error('Неуспешно изтриване от регистъра.', err);
@@ -464,6 +514,12 @@ export function useAdminData(isMasterAdmin: boolean) {
       if (!egn) {
         setProfileError('Липсва ЕГН за този профил.');
         return;
+      }
+
+      // Fetch fresh registry data to ensure we have the latest info
+      const freshRegistryData = registryEntries.find(e => e?.id === entry?.id);
+      if (freshRegistryData && freshRegistryData !== entry) {
+        setProfileEntry(freshRegistryData);
       }
 
       const history = await getClientHistory(egn);
@@ -558,7 +614,12 @@ export function useAdminData(isMasterAdmin: boolean) {
       setRegistrySearch('');
       setSelectedRegistryEntryId(null);
 
-      await Promise.all([fetchClients(), fetchScheduleItems()]);
+      // Synchronize ALL data - refresh clients, schedule, AND registry to sync daily stats
+      await Promise.all([
+        fetchClients(),
+        fetchScheduleItems(),
+        fetchRegistryEntries()
+      ]);
     } catch {
       setClientsError('Неуспешно добавяне на клиент.');
     } finally {
@@ -620,7 +681,12 @@ export function useAdminData(isMasterAdmin: boolean) {
       setRegistrySearch('');
       setSelectedRegistryEntryId(null);
 
-      await Promise.all([fetchClients(), fetchScheduleItems()]);
+      // Synchronize ALL data - refresh clients, schedule, AND registry to sync daily stats
+      await Promise.all([
+        fetchClients(),
+        fetchScheduleItems(),
+        fetchRegistryEntries()
+      ]);
     } catch (err) {
       console.error('Неуспешно добавяне на клиент за днес.', err);
       setClientsError('Неуспешно добавяне на клиент.');
@@ -630,12 +696,20 @@ export function useAdminData(isMasterAdmin: boolean) {
   };
 
   const handleDeleteClient = async (clientId: string) => {
+    if (!clientId) return;
+    
     setClientDeletingId(clientId);
     setClientsError(null);
     try {
       await deleteClient(clientId);
       await deleteScheduleByClient(clientId);
-      await Promise.all([fetchClients(), fetchScheduleItems()]);
+      
+      // Synchronize ALL data globally - refresh registry, clients, and schedule together
+      await Promise.all([
+        fetchClients(),
+        fetchScheduleItems(),
+        fetchRegistryEntries()
+      ]);
     } catch {
       setClientsError('Неуспешно изтриване на клиента.');
     } finally {
