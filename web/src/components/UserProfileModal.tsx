@@ -534,10 +534,8 @@ export default function UserProfileModal({
             {/* Signature line */}
             <div style={{ marginTop: 32, fontSize: 12, display: 'flex', justifyContent: 'space-between' }}>
               <div>
-                <div>Подпис на клиент: _______________________</div>
               </div>
               <div>
-                <div>Дата: _______________________</div>
               </div>
             </div>
           </div>
