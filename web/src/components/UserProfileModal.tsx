@@ -443,23 +443,20 @@ export default function UserProfileModal({
               <div><strong>Месец:</strong> {reportPeriodLabel}</div>
             </div>
 
-            {/* Summary Section */}
-            <div style={{ marginTop: 16, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4 }}>
-              <div style={{ fontSize: 12 }}>
-                <div><strong>Общо записи за периода:</strong> {totalDeliveriesCount}</div>
-                <div style={{ color: '#059669', marginTop: 4 }}>
-                  <strong>✓ Успешно доставени:</strong> {successfulDeliveriesCount}
-                </div>
-                <div style={{ color: '#059669' }}>
-                  <strong>✓ Общо доставени порции:</strong> {deliveredPortionsThisMonth}
-                </div>
-                {issuesCount > 0 && (
-                  <div style={{ color: '#dc2626', marginTop: 4 }}>
-                    <strong>✗ Пропуснати/Проблемни:</strong> {issuesCount}
-                  </div>
-                )}
-              </div>
-            </div>
+            {/* Summary Section - Печатна версия */}
+<div style={{ marginTop: 16, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4 }}>
+  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+    <div style={{ color: '#059669' }}>
+      <div style={{ fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>Успешно доставени порции</div>
+      <div style={{ fontSize: 20, fontWeight: 'bold' }}>{deliveredPortionsThisMonth}</div>
+    </div>
+    
+    <div style={{ color: '#dc2626' }}>
+      <div style={{ fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>Проблемни / Пропуснати</div>
+      <div style={{ fontSize: 20, fontWeight: 'bold' }}>{issuesCount}</div>
+    </div>
+  </div>
+</div>
 
             {/* Simplified Table - Only Date, Status, Portions */}
             <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 14, fontSize: 12 }}>
