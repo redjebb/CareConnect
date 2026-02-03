@@ -486,7 +486,7 @@ export default function UserProfileModal({
                         border: '1px solid #e2e8f0', 
                         padding: 10,
                         textAlign: 'center',
-                        color: isIssue ? '#dc2626' : '#059669',
+                        color: isIssue ? '#dc2626' : '#059669', 
                         fontWeight: 'bold'
                       }}>
                         {statusText}
