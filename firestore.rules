@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Функция за проверка дали е Master Admin
+    function isMasterAdmin() {
+      return request.auth.token.email == 'redjebtudjar@gmail.com'; 
+    }
+
+    // Функция за проверка дали потребителят е в списъка с администратори (Standard Admin)
+    function isAnyAdmin() {
+      return isMasterAdmin() || 
+             exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+    }
+
+    // ----------------------------------------------------
+    // 1. CLIENTS (Дневни доставки/маршрут)
+    // ----------------------------------------------------
+    match /clients/{clientId} {
+      allow read: if request.auth != null;
+      allow create, delete: if isAnyAdmin();
+      allow update: if request.auth != null;
+    }
+
+    // ----------------------------------------------------
+    // 2. CLIENTS REGISTRY (Постоянен регистър с ЕГН)
+    // ----------------------------------------------------
+    match /clients_registry/{clientId} {
+      allow read: if request.auth != null;
+      allow write: if isAnyAdmin();
+    }
+
+    // ----------------------------------------------------
+    // 3. DRIVERS & SCHEDULE
+    // ----------------------------------------------------
+    match /drivers/{driverId} {
+      allow read: if request.auth != null; 
+      allow write: if isAnyAdmin();
+    }
+
+    match /schedule/{scheduleId} {
+      allow read: if request.auth != null; 
+      allow write: if isAnyAdmin();
+    }
+
+    // ----------------------------------------------------
+    // 4. INCIDENTS (Reports)
+    // ----------------------------------------------------
+    match /incidents/{incidentId} {
+        allow create, read: if request.auth != null;
+        allow update, delete: if isAnyAdmin();
+    }
+    
+    // ----------------------------------------------------
+    // 5. ADMINS (Управление на достъпа)
+    // ----------------------------------------------------
+    match /admins/{adminId} {
+      allow read: if request.auth != null;
+      allow write: if isMasterAdmin();
+    }
+
+    // ----------------------------------------------------
+    // 6. USERS
+    // ----------------------------------------------------
+    match /users/{userId} {
+        allow read: if request.auth != null;
+        allow write: if false; 
+    }
+
+    // ----------------------------------------------------
+    // 7. DELIVERY HISTORY (Колекция за отчети)
+    // ----------------------------------------------------
+    match /deliveryHistory/{docId} {
+  allow read, write: if request.auth != null;
+}
+  }
+}
