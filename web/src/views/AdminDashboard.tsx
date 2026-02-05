@@ -480,6 +480,14 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
     onDriverCityChange={handleDriverCityChange}
     onSubmit={async (event) => {
       event.preventDefault();
+
+      const formattedName = driverForm.name
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+
+      driverForm.name = formattedName;
+      
       await handleAddDriver(event); // Първо добавя шофьора в списъка
       if (driverForm.email) {
         await sendInvite(driverForm.email, 'driver'); // После създава поканата

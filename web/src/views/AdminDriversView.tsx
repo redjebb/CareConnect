@@ -1,17 +1,15 @@
+import { useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Driver } from '../types';
 
 type AdminDriversViewProps = {
   cityData: Record<string, string[]>;
-
   drivers: Driver[];
   invitations: any[];
   driversLoading: boolean;
   driversError: string | null;
-
   driverSubmitting: boolean;
   driverDeletingId: string | null;
-
   driverForm: {
     name: string;
     email: string;
@@ -19,10 +17,8 @@ type AdminDriversViewProps = {
     routeArea: string;
     selectedCity: string;
   };
-
   onDriverInputChange: (field: 'name' | 'email' | 'phone' | 'routeArea', value: string) => void;
   onDriverCityChange: (city: string) => void;
-
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onDeleteDriver: (driverId: string) => void;
 };
@@ -61,9 +57,20 @@ export default function AdminDriversView({
   onSubmit,
   onDeleteDriver
 }: AdminDriversViewProps) {
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Филтриране и сортиране по азбучен ред (Кирилица)
+  const filteredDrivers = drivers
+    .filter(driver =>
+      driver.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      driver.email.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, 'bg'));
+
   return (
     <section className="grid gap-6 md:grid-cols-2">
-      <form onSubmit={onSubmit} className="rounded-2xl bg-white p-6 shadow">
+      {/* ФОРМА ЗА ДОБАВЯНЕ */}
+      <form onSubmit={onSubmit} className="rounded-2xl bg-white p-6 shadow h-fit">
         <h2 className="text-xl font-semibold text-slate-900">Добави шофьор</h2>
         <p className="mt-1 text-sm text-slate-500">Попълнете детайли за нов шофьор.</p>
 
@@ -96,6 +103,7 @@ export default function AdminDriversView({
             <label className="block text-sm font-medium text-slate-700">Телефон</label>
             <input
               type="tel"
+              pattern="[0-9+ ]{8,}"
               value={driverForm.phone}
               onChange={event => onDriverInputChange('phone', event.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-200 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
@@ -114,9 +122,7 @@ export default function AdminDriversView({
             >
               <option value="">Изберете град</option>
               {Object.keys(cityData).map(city => (
-                <option key={city} value={city}>
-                  {city}
-                </option>
+                <option key={city} value={city}>{city}</option>
               ))}
             </select>
           </div>
@@ -134,9 +140,7 @@ export default function AdminDriversView({
                 {driverForm.selectedCity ? 'Изберете район' : 'Моля, изберете град'}
               </option>
               {(cityData[driverForm.selectedCity] ?? []).map(district => (
-                <option key={district} value={district}>
-                  {district}
-                </option>
+                <option key={district} value={district}>{district}</option>
               ))}
             </select>
           </div>
@@ -145,62 +149,82 @@ export default function AdminDriversView({
         <button
           type="submit"
           disabled={driverSubmitting}
-          className="mt-6 w-full rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white shadow hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:opacity-60"
+          className="mt-6 w-full rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white shadow hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:opacity-60 transition-colors"
         >
           {driverSubmitting ? 'Добавяне...' : 'Запази шофьор'}
         </button>
-        {driversError ? <p className="mt-3 text-sm text-red-600">{driversError}</p> : null}
+        {driversError ? <p className="mt-3 text-sm text-red-600 font-medium">{driversError}</p> : null}
       </form>
 
+      {/* СПИСЪК С ШОФЬОРИ */}
       <div className="rounded-2xl bg-white p-6 shadow">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-slate-900">Списък с шофьори</h2>
-          {driversLoading ? <span className="text-sm text-slate-500">Зареждане...</span> : null}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-50 pb-4">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-semibold text-slate-900">Списък с шофьори</h2>
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-600">
+              {filteredDrivers.length}
+            </span>
+          </div>
+          <div className="relative">
+             <input 
+               type="text"
+               placeholder="Търси име или имейл..."
+               value={searchTerm}
+               onChange={(e) => setSearchTerm(e.target.value)}
+               className="w-full sm:w-64 rounded-xl bg-slate-50 border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+             />
+          </div>
         </div>
 
         {driversLoading ? (
-          <p className="mt-6 text-sm text-slate-500">Loading drivers...</p>
-        ) : drivers.length === 0 ? (
-          <p className="mt-6 text-sm text-slate-500">Няма налични шофьори.</p>
+          <p className="mt-6 text-sm text-slate-500 italic text-center">Зареждане на списъка...</p>
+        ) : filteredDrivers.length === 0 ? (
+          <div className="mt-10 text-center">
+            <p className="text-sm text-slate-500 italic">
+              {searchTerm ? 'Няма намерени шофьори.' : 'Няма добавени шофьори.'}
+            </p>
+          </div>
         ) : (
           <div className="mt-6 overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead>
-                <tr className="text-left text-slate-500">
-                  <th className="px-4 py-2 font-medium">Име</th>
-                  <th className="px-4 py-2 font-medium">Имейл</th>
-                  <th className="px-4 py-2 font-medium">Телефон</th>
-                  <th className="px-4 py-2 font-medium">Район</th>
-                  <th className="px-4 py-2 font-medium">Статус</th>
-                  <th className="px-4 py-2 font-medium text-right">Действие</th>
+                <tr className="text-left text-slate-500 uppercase text-[10px] tracking-wider">
+                  <th className="px-4 py-3 font-bold italic">Име</th>
+                  <th className="px-4 py-3 font-bold italic">Контакт</th>
+                  <th className="px-4 py-3 font-bold italic">Район</th>
+                  <th className="px-4 py-3 font-bold italic">Статус</th>
+                  <th className="px-4 py-3 font-bold italic text-right">Действие</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-  {drivers.map(driver => (
-    <tr key={driver.id}>
-      <td className="px-4 py-3 font-medium text-slate-900">{driver.name}</td>
-      <td className="px-4 py-3 text-slate-600">{driver.email}</td>
-      <td className="px-4 py-3 text-slate-600">{driver.phone}</td>
-      <td className="px-4 py-3 text-slate-600">{driver.routeArea}</td>
-      
-      { /* Нова колона за статус */ }
-      <td className="px-4 py-3">
-        <DriverStatusBadge email={driver.email} invitations={invitations} />
-      </td>
-
-      <td className="px-4 py-3 text-right">
-        <button
-          type="button"
-          onClick={() => onDeleteDriver(driver.id)}
-          disabled={driverDeletingId === driver.id}
-          className="rounded-md border border-red-200 px-3 py-1 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"
-        >
-          {driverDeletingId === driver.id ? 'Изтриване...' : 'Изтрий'}
-        </button>
-      </td>
-    </tr>
-  ))}
-</tbody>
+                {filteredDrivers.map(driver => (
+                  <tr key={driver.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="px-4 py-3 font-semibold text-slate-900">{driver.name}</td>
+                    <td className="px-4 py-3">
+                      <div className="text-slate-600 font-medium">{driver.email}</div>
+                      <div className="text-[11px] text-slate-400">{driver.phone}</div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{driver.routeArea}</td>
+                    <td className="px-4 py-3">
+                      <DriverStatusBadge email={driver.email} invitations={invitations} />
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Сигурни ли сте, че искате да изтриете ${driver.name}?`)) {
+                            onDeleteDriver(driver.id);
+                          }
+                        }}
+                        disabled={driverDeletingId === driver.id}
+                        className="rounded-md border border-red-200 px-3 py-1 text-xs font-bold text-red-600 hover:bg-red-600 hover:text-white transition-all disabled:opacity-60"
+                      >
+                        {driverDeletingId === driver.id ? '...' : 'Изтрий'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
           </div>
         )}
