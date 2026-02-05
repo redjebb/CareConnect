@@ -73,5 +73,17 @@ service cloud.firestore {
     match /deliveryHistory/{docId} {
   allow read, write: if request.auth != null;
 }
+
+// ----------------------------------------------------
+    // 8. INVITATIONS (Система за активация)
+    // ----------------------------------------------------
+    match /invitations/{invitationId} {
+      // Позволяваме четене без логване, за да може страницата 
+      // за активация да провери имейла преди потребителят да има акаунт.
+      allow read: if true; 
+      
+      // Само администраторите могат да създават и управляват покани.
+      allow write: if isAnyAdmin();
+    }
   }
 }

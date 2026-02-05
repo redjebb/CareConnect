@@ -10,6 +10,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@emailjs/browser": "^4.4.1",
     "file-saver": "^2.0.5",
     "firebase": "^12.6.0",
     "jspdf": "^3.0.4",

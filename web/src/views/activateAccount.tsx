@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { db } from '../services/firebase';
+import { db } from '../firebase'; // Увери се, че пътят до firebase конфигурацията ти е верен
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { register } from '../services/authService'; // Използваме твоята функция за регистрация
-
+import { register } from '../services/authService'; 
 
 export default function ActivateAccount() {
   const [searchParams] = useSearchParams();
@@ -12,111 +11,171 @@ export default function ActivateAccount() {
   const [status, setStatus] = useState<'loading' | 'valid' | 'invalid'>('loading');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const token = searchParams.get('token');
+  // Взимаме email от линка: ?email=...
+  const emailParam = searchParams.get('email');
 
   useEffect(() => {
-    const verifyToken = async () => {
-      if (!token) {
+    const verifyInvitation = async () => {
+      if (!emailParam) {
         setStatus('invalid');
         return;
       }
 
       try {
-        // Търсим в Firestore документа, който ти току-що създаде ръчно
+        // Търсим дали има такава покана в базата
         const q = query(
           collection(db, 'invitations'), 
-          where('token', '==', token), 
-          where('status', '==', 'pending')
+          where('email', '==', emailParam.trim())
         );
         const querySnapshot = await getDocs(q);
 
         if (querySnapshot.empty) {
+          // Ако не намира покана, значи линкът е грешен
           setStatus('invalid');
         } else {
-          const data = querySnapshot.docs[0].data();
-          setEmail(data.email);
-          setStatus('valid');
+          const invData = querySnapshot.docs[0].data();
+          // Ако поканата вече е приета, не позволяваме повторна активация
+          if (invData.status === 'accepted') {
+            setStatus('invalid');
+          } else {
+            setEmail(emailParam.trim());
+            setStatus('valid');
+          }
         }
       } catch (err) {
-        console.error("Грешка при проверка на токена:", err);
+        console.error("Грешка при проверка на поканата:", err);
         setStatus('invalid');
       }
     };
 
-    verifyToken();
-  }, [token]);
+    verifyInvitation();
+  }, [emailParam]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
+
     if (password.length < 6) {
-      alert("Паролата трябва да е поне 6 символа.");
+      setErrorMessage("Паролата трябва да е поне 6 символа.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setErrorMessage("Паролите не съвпадат.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // 1. Регистрираме потребителя в Firebase Auth
+      // 1. Регистрираме потребителя в Firebase Authentication
       await register(email, password);
 
-      // 2. Маркираме поканата като използвана
-      const q = query(collection(db, 'invitations'), where('token', '==', token));
-      const querySnapshot = await getDocs(q);
-      const invitationDocId = querySnapshot.docs[0].id;
-      
-      await updateDoc(doc(db, 'invitations', invitationDocId), {
-        status: 'accepted',
-        activatedAt: new Date()
-      });
+      // 2. Маркираме поканата като 'accepted'
+      const invQ = query(collection(db, 'invitations'), where('email', '==', email));
+      const invSnapshot = await getDocs(invQ);
+      if (!invSnapshot.empty) {
+        await updateDoc(doc(db, 'invitations', invSnapshot.docs[0].id), {
+          status: 'accepted',
+          activatedAt: new Date().toISOString()
+        });
+      }
 
-      alert("Акаунтът е активиран успешно!");
-      navigate('/'); // Връщаме го в началото
+      // 3. Обновяваме статуса на шофьора в колекция 'drivers' на 'active'
+      const drvQ = query(collection(db, 'drivers'), where('email', '==', email));
+      const drvSnapshot = await getDocs(drvQ);
+      if (!drvSnapshot.empty) {
+        await updateDoc(doc(db, 'drivers', drvSnapshot.docs[0].id), {
+          status: 'active'
+        });
+      }
+
+      alert("Акаунтът е активиран успешно! Вече можете да влезете в системата.");
+      navigate('/'); 
     } catch (err: any) {
-      alert("Грешка при активация: " + err.message);
+      console.error("Грешка при активация:", err);
+      setErrorMessage(err.message || "Възникна грешка при активацията.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (status === 'loading') return <div className="p-10 text-center font-bold">Проверка на поканата...</div>;
-  
-  if (status === 'invalid') return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md text-center">
-        <h2 className="text-2xl font-bold text-red-600">Невалиден линк</h2>
-        <p className="mt-2 text-gray-600">Линкът е изтекъл или вече е бил използван.</p>
-        <button onClick={() => navigate('/')} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded">Към входа</button>
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-xl font-semibold text-slate-600 animate-pulse">Проверка на поканата...</div>
       </div>
-    </div>
-  );
+    );
+  }
+  
+  if (status === 'invalid') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-xl text-center max-w-sm w-full">
+          <div className="text-red-500 text-5xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-slate-900">Невалиден линк</h2>
+          <p className="mt-2 text-gray-500">Този линк е невалиден, изтекъл или акаунтът вече е бил активиран.</p>
+          <button 
+            onClick={() => navigate('/')} 
+            className="mt-6 w-full bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition"
+          >
+            Към страницата за вход
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
       <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-xl border border-slate-100">
-        <p className="text-blue-600 font-semibold uppercase text-xs tracking-widest">CareConnect</p>
-        <h2 className="text-2xl font-bold text-slate-900 mt-2">Активиране на профил</h2>
-        <p className="text-slate-500 mt-2">Добре дошли! Създайте парола за акаунт: <br/> 
-          <span className="font-semibold text-slate-800">{email}</span>
-        </p>
+        <div className="mb-8">
+          <p className="text-blue-600 font-bold uppercase text-xs tracking-widest">CareConnect</p>
+          <h2 className="text-3xl font-extrabold text-slate-900 mt-2">Активация</h2>
+          <p className="text-slate-500 mt-2">
+            Създайте парола за Вашия акаунт:<br/> 
+            <span className="font-bold text-slate-800">{email}</span>
+          </p>
+        </div>
         
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-slate-700">Нова парола</label>
+            <label className="block text-sm font-semibold text-slate-700">Нова парола</label>
             <input 
               type="password" 
               required
-              min={6}
-              className="mt-1 w-full border border-slate-200 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
+              className="mt-1 w-full border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none transition"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder="Минимум 6 символа"
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-700">Потвърди парола</label>
+            <input 
+              type="password" 
+              required
+              className="mt-1 w-full border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none transition"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Повторете паролата"
+            />
+          </div>
+
+          {errorMessage && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium">
+              {errorMessage}
+            </div>
+          )}
+
           <button 
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all disabled:opacity-50"
           >
             {isSubmitting ? 'Активиране...' : 'Завърши регистрацията'}
           </button>

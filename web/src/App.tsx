@@ -160,27 +160,23 @@ function App() {
     await logout();
   };
 
-  if (isDataLoading) {
-    return (
-      <main className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-slate-100 px-4 py-12">
-        <section className="mx-auto w-full max-w-xl rounded-3xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
-          <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">CareConnect</p>
-          <h1 className="mt-3 text-2xl font-bold text-slate-900">Зареждане...</h1>
-          <p className="mt-3 text-sm text-slate-600">Моля, изчакайте докато проверим достъпа ви.</p>
-        </section>
-      </main>
-    );
-  }
-
-  // RENDER 2: DRIVER PWA VIEW
+  // Single return with clean Routes structure
   return (
     <Routes>
-      {/* ПЪТ ЗА АКТИВАЦИЯ - Достъпен винаги */}
+      {/* Activate route - always accessible, independent of auth state */}
       <Route path="/activate" element={<ActivateAccount />} />
 
-      {/* ОСНОВЕН ПЪТ - Тук е цялата ти логика за Логин/Админ/Шофьор */}
-      <Route path="/" element={
-        user ? (
+      {/* All other routes handled here with auth logic */}
+      <Route path="*" element={
+        isDataLoading ? (
+          <main className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-slate-100 px-4 py-12">
+            <section className="mx-auto w-full max-w-xl rounded-3xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
+              <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">CareConnect</p>
+              <h1 className="mt-3 text-2xl font-bold text-slate-900">Зареждане...</h1>
+              <p className="mt-3 text-sm text-slate-600">Моля, изчакайте докато проверим достъпа ви.</p>
+            </section>
+          </main>
+        ) : user ? (
           isDriver ? (
             <DriverView
               userEmail={user.email ?? ''}
@@ -282,9 +278,6 @@ function App() {
           </main>
         )
       } />
-
-      {/* Редирект за всички непознати пътища към началната страница */}
-      <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
 }

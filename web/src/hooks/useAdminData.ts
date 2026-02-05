@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import emailjs from '@emailjs/browser';
 import { addClient, deleteClient, getClientHistory, getClients } from '../clientService';
 import { addScheduleItem, deleteScheduleByClient, getScheduleItems } from '../scheduleService';
 import { addDriver, deleteDriver, getDrivers } from '../driverService';
@@ -746,9 +747,30 @@ export function useAdminData(isMasterAdmin: boolean) {
     setDriversError(null);
     try {
       await addDriver({ name: trimmedName, email: trimmedEmail, phone: trimmedPhone, routeArea: combinedRoute });
+
+      // Send invitation email to the new driver
+      const activationUrl = `https://careconnect-d7bd7.web.app/activate?email=${encodeURIComponent(trimmedEmail)}`;
+      
+      try {
+        await emailjs.send(
+          'service_dkng7ol', 
+          'template_picgzcg', 
+          {
+            email: trimmedEmail,
+            link: activationUrl
+          },
+          'ikmstn4Jj0VVM1gWD' // Public key
+        );
+      } catch (emailError) {
+        console.error('Failed to send invitation email:', emailError);
+        // Driver was added successfully, but email failed - notify but don't block
+        setDriversError('Шофьорът е добавен, но изпращането на покана по имейл не успя.');
+      }
+
       setDriverForm({ name: '', email: '', phone: '', routeArea: '', selectedCity: '' });
       await fetchDrivers();
-    } catch {
+    } catch (err) {
+      console.error('Неуспешно добавяне на шофьор.', err);
       setDriversError('Неуспешно добавяне на шофьор.');
     } finally {
       setDriverSubmitting(false);
