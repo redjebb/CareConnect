@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAdminData } from '../hooks/useAdminData';
 import AdminDailyListView from './AdminDailyListView';
 import AdminDriversView from './AdminDriversView';
@@ -6,6 +6,8 @@ import AdminAdminsManagementView from './AdminAdminsManagementView';
 import AdminRegistryView from './AdminRegistryView';
 import UserProfileModal from '../components/UserProfileModal';
 import SignatureViewerModal from '../components/SignatureViewerModal';
+import { collection, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { db } from '../services/firebase'; 
 
 const CITY_DATA: Record<string, string[]> = {
   София: [
@@ -255,6 +257,33 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
     handleDeleteAdmin
   } = adminData;
 
+  const [invitations, setInvitations] = useState<any[]>([]);
+
+  // Следим колекцията в реално време
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'invitations'), (snapshot) => {
+      const data = snapshot.docs.map(doc => doc.data());
+      setInvitations(data);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const sendInvite = async (email: string, role: 'driver' | 'manager') => {
+    try {
+      const token = crypto.randomUUID();
+      await addDoc(collection(db, 'invitations'), {
+        email: email.trim(),
+        role: role,
+        token: token,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+      });
+      console.log(`[Invitation] Създадена покана за ${email} като ${role}`);
+    } catch (err) {
+      console.error("Грешка при запис на покана в Firestore:", err);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -287,7 +316,7 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
                       : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  Управление на Администратори
+                  Управление на Мениджъри
                 </button>
               )}
 
@@ -346,18 +375,26 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
         </header>
 
         {isMasterAdmin && currentView === 'admins' ? (
-          <AdminAdminsManagementView
-            admins={admins}
-            adminsLoading={adminsLoading}
-            adminsError={adminsError}
-            adminSubmitting={adminSubmitting}
-            adminDeletingId={adminDeletingId}
-            adminForm={adminForm}
-            onAdminInputChange={handleAdminInputChange}
-            onSubmit={event => void handleAddAdmin(event)}
-            onDeleteAdmin={adminId => void handleDeleteAdmin(adminId)}
-          />
-        ) : null}
+  <AdminAdminsManagementView
+    admins={admins}
+    invitations={invitations}
+    adminsLoading={adminsLoading}
+    adminsError={adminsError}
+    adminSubmitting={adminSubmitting}
+    adminDeletingId={adminDeletingId}
+    adminForm={adminForm}
+    onAdminInputChange={handleAdminInputChange}
+    onSubmit={async (event) => {
+      event.preventDefault();
+      await handleAddAdmin(event); // Първо добавя мениджъра
+      if (adminForm.email) {
+        await sendInvite(adminForm.email, 'manager'); // После създава поканата
+        alert(`Мениджърът е добавен. Поканата за ${adminForm.email} е готова!`);
+      }
+    }}
+    onDeleteAdmin={adminId => void handleDeleteAdmin(adminId)}
+  />
+) : null}
 
         {currentView === 'clients' && clientManagementTab === 'registry' ? (
           <AdminRegistryView
@@ -430,20 +467,28 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
         ) : null}
 
         {currentView === 'drivers' ? (
-          <AdminDriversView
-            cityData={CITY_DATA}
-            drivers={drivers}
-            driversLoading={driversLoading}
-            driversError={driversError}
-            driverSubmitting={driverSubmitting}
-            driverDeletingId={driverDeletingId}
-            driverForm={driverForm}
-            onDriverInputChange={handleDriverInputChange}
-            onDriverCityChange={handleDriverCityChange}
-            onSubmit={event => void handleAddDriver(event)}
-            onDeleteDriver={driverId => void handleDeleteDriver(driverId)}
-          />
-        ) : null}
+  <AdminDriversView
+    cityData={CITY_DATA}
+    drivers={drivers}
+    invitations={invitations}
+    driversLoading={driversLoading}
+    driversError={driversError}
+    driverSubmitting={driverSubmitting}
+    driverDeletingId={driverDeletingId}
+    driverForm={driverForm}
+    onDriverInputChange={handleDriverInputChange}
+    onDriverCityChange={handleDriverCityChange}
+    onSubmit={async (event) => {
+      event.preventDefault();
+      await handleAddDriver(event); // Първо добавя шофьора в списъка
+      if (driverForm.email) {
+        await sendInvite(driverForm.email, 'driver'); // После създава поканата
+        alert(`Шофьорът е добавен. Поканата за ${driverForm.email} е готова!`);
+      }
+    }}
+    onDeleteDriver={driverId => void handleDeleteDriver(driverId)}
+  />
+) : null}
 
         <UserProfileModal
           isOpen={isProfileModalOpen}

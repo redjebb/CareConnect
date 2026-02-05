@@ -5,6 +5,7 @@ type AdminDriversViewProps = {
   cityData: Record<string, string[]>;
 
   drivers: Driver[];
+  invitations: any[];
   driversLoading: boolean;
   driversError: string | null;
 
@@ -26,9 +27,30 @@ type AdminDriversViewProps = {
   onDeleteDriver: (driverId: string) => void;
 };
 
+const DriverStatusBadge = ({ email, invitations }: { email: string; invitations: any[] }) => {
+  const invite = invitations.find(i => i.email === email);
+
+  if (!invite || invite.status === 'accepted') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        Активен
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+      Чака активация
+    </span>
+  );
+};
+
 export default function AdminDriversView({
   cityData,
   drivers,
+  invitations,
   driversLoading,
   driversError,
   driverSubmitting,
@@ -149,29 +171,36 @@ export default function AdminDriversView({
                   <th className="px-4 py-2 font-medium">Имейл</th>
                   <th className="px-4 py-2 font-medium">Телефон</th>
                   <th className="px-4 py-2 font-medium">Район</th>
+                  <th className="px-4 py-2 font-medium">Статус</th>
                   <th className="px-4 py-2 font-medium text-right">Действие</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {drivers.map(driver => (
-                  <tr key={driver.id}>
-                    <td className="px-4 py-3 font-medium text-slate-900">{driver.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{driver.email}</td>
-                    <td className="px-4 py-3 text-slate-600">{driver.phone}</td>
-                    <td className="px-4 py-3 text-slate-600">{driver.routeArea}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => onDeleteDriver(driver.id)}
-                        disabled={driverDeletingId === driver.id}
-                        className="rounded-md border border-red-200 px-3 py-1 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"
-                      >
-                        {driverDeletingId === driver.id ? 'Изтриване...' : 'Изтрий'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+  {drivers.map(driver => (
+    <tr key={driver.id}>
+      <td className="px-4 py-3 font-medium text-slate-900">{driver.name}</td>
+      <td className="px-4 py-3 text-slate-600">{driver.email}</td>
+      <td className="px-4 py-3 text-slate-600">{driver.phone}</td>
+      <td className="px-4 py-3 text-slate-600">{driver.routeArea}</td>
+      
+      { /* Нова колона за статус */ }
+      <td className="px-4 py-3">
+        <DriverStatusBadge email={driver.email} invitations={invitations} />
+      </td>
+
+      <td className="px-4 py-3 text-right">
+        <button
+          type="button"
+          onClick={() => onDeleteDriver(driver.id)}
+          disabled={driverDeletingId === driver.id}
+          className="rounded-md border border-red-200 px-3 py-1 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"
+        >
+          {driverDeletingId === driver.id ? 'Изтриване...' : 'Изтрий'}
+        </button>
+      </td>
+    </tr>
+  ))}
+</tbody>
             </table>
           </div>
         )}

@@ -1,19 +1,19 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import './index.css'; // Линкува Tailwind стиловете
+import './index.css'; 
+import { BrowserRouter } from 'react-router-dom';
 
 // Намира root елемента от index.html
 const rootElement = document.getElementById('root');
 
 if (rootElement) {
-  // Зарежда App компонента вътре в него
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
-      <App />
+      {/* Обгръщаме App, за да работят маршрутите (Routes) */}
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
     </React.StrictMode>,
   );
-} else {
-    // В случай, че element root липсва (за да няма грешка)
-    console.error('Failed to find the root element with ID "root".');
 }

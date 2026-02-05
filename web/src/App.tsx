@@ -6,7 +6,8 @@ import { checkStandardAdminStatus } from './services/adminAccessService';
 import { FirebaseUser, login, logout, register, subscribeToAuthState } from './services/authService';
 import AdminDashboard from './views/AdminDashboard';
 import DriverView from './views/DriverView';
-// Report services are in src/services/reportService.ts
+import { Routes, Route, Navigate } from 'react-router-dom';
+import ActivateAccount from './views/activateAccount';
 
 function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -172,120 +173,119 @@ function App() {
   }
 
   // RENDER 2: DRIVER PWA VIEW
-  if (user && isDriver) {
-    return (
-      <DriverView
-        userEmail={user.email ?? ''}
-        currentDriver={currentDriver}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  // RENDER 3: ADMIN DASHBOARD VIEW
-  if (user && isAuthorizedAdmin) {
-    return (
-      <AdminDashboard
-        userEmail={user.email ?? ''}
-        isMasterAdmin={isMasterAdmin}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  if (user && !isDriver && !isAuthorizedAdmin) {
-    return (
-      <main className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-slate-100 px-4 py-12">
-        <section className="mx-auto grid w-full max-w-3xl gap-6 rounded-3xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">CareConnect</p>
-            <h1 className="mt-3 text-3xl font-bold text-slate-900">Нямате достъп</h1>
-            <p className="mt-4 text-slate-600">
-              Вие сте влезли като <span className="font-semibold">{user.email}</span>, но този акаунт няма права за администратор или шофьор.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void handleLogout()}
-            className="w-full rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow hover:bg-blue-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-          >
-            Изход
-          </button>
-        </section>
-      </main>
-    );
-  }
-
-  // RENDER 4: LOGIN VIEW
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-slate-100 px-4 py-12">
-      <section className="mx-auto grid w-full max-w-5xl gap-10 rounded-3xl bg-white/80 p-8 shadow-xl backdrop-blur-sm md:grid-cols-2">
-        <div className="flex flex-col justify-center">
-          <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">CareConnect</p>
-          <h1 className="mt-3 text-3xl font-bold text-slate-900">Вход към административната платформа</h1>
-          <p className="mt-4 text-slate-600">
-            Следете шофьорите на терен, управлявайте клиентите и генерирайте месечни отчети от едно място.
-          </p>
-          <ul className="mt-6 space-y-2 text-sm text-slate-600">
-            <li>• Реално време за маршрути и SOS сигнали</li>
-            <li>• Управление на клиенти и шофьори</li>
-            <li>• Автоматизирани HTML/PDF отчети</li>
-          </ul>
-        </div>
+    <Routes>
+      {/* ПЪТ ЗА АКТИВАЦИЯ - Достъпен винаги */}
+      <Route path="/activate" element={<ActivateAccount />} />
 
-        <form className="space-y-4" onSubmit={handleLoginSubmit}>
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-slate-700">
-              Имейл адрес
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={event => setEmail(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-4 py-2 text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-              placeholder="name@company.com"
-              required
+      {/* ОСНОВЕН ПЪТ - Тук е цялата ти логика за Логин/Админ/Шофьор */}
+      <Route path="/" element={
+        user ? (
+          isDriver ? (
+            <DriverView
+              userEmail={user.email ?? ''}
+              currentDriver={currentDriver}
+              onLogout={handleLogout}
             />
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-              Парола
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={event => setPassword(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-4 py-2 text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-              placeholder="••••••••"
-              required
+          ) : isAuthorizedAdmin ? (
+            <AdminDashboard
+              userEmail={user.email ?? ''}
+              isMasterAdmin={isMasterAdmin}
+              onLogout={handleLogout}
             />
-          </div>
+          ) : (
+            /* Гледка за потребител без права */
+            <main className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-slate-100 px-4 py-12">
+              <section className="mx-auto grid w-full max-w-3xl gap-6 rounded-3xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">CareConnect</p>
+                  <h1 className="mt-3 text-3xl font-bold text-slate-900">Нямате достъп</h1>
+                  <p className="mt-4 text-slate-600">
+                    Вие сте влезли като <span className="font-semibold">{user.email}</span>, но този акаунт няма права.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleLogout()}
+                  className="w-full rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow hover:bg-blue-500"
+                >
+                  Изход
+                </button>
+              </section>
+            </main>
+          )
+        ) : (
+          /* Гледка за ВХОД (Когато НЯМА логнат потребител) */
+          <main className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-slate-100 px-4 py-12">
+            <section className="mx-auto grid w-full max-w-5xl gap-10 rounded-3xl bg-white/80 p-8 shadow-xl backdrop-blur-sm md:grid-cols-2">
+              <div className="flex flex-col justify-center">
+                <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">CareConnect</p>
+                <h1 className="mt-3 text-3xl font-bold text-slate-900">Вход към административната платформа</h1>
+                <p className="mt-4 text-slate-600">
+                  Следете шофьорите на терен, управлявайте клиентите и генерирайте месечни отчети от едно място.
+                </p>
+                <ul className="mt-6 space-y-2 text-sm text-slate-600">
+                  <li>• Реално време за маршрути и SOS сигнали</li>
+                  <li>• Управление на клиенти и шофьори</li>
+                  <li>• Автоматизирани HTML/PDF отчети</li>
+                </ul>
+              </div>
 
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+              <form className="space-y-4" onSubmit={handleLoginSubmit}>
+                <div>
+                  <label htmlFor="email" className="block text-sm font-medium text-slate-700">Имейл адрес</label>
+                  <input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={event => setEmail(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-4 py-2 text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    placeholder="name@company.com"
+                    required
+                  />
+                </div>
 
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex-1 rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow hover:bg-blue-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 disabled:opacity-60"
-            >
-              {isSubmitting ? 'Влизане...' : 'Вход'}
-            </button>
-            <button
-              type="button"
-              disabled={isSubmitting}
-              onClick={handleRegisterClick}
-              className="flex-1 rounded-lg border border-blue-200 px-6 py-3 font-semibold text-blue-600 shadow hover:border-blue-300 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:opacity-60"
-            >
-              {isSubmitting ? 'Създаване...' : 'Регистрация'}
-            </button>
-          </div>
-        </form>
-      </section>
-    </main>
+                <div>
+                  <label htmlFor="password" className="block text-sm font-medium text-slate-700">Парола</label>
+                  <input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={event => setPassword(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-4 py-2 text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    placeholder="••••••••"
+                    required
+                  />
+                </div>
+
+                {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="flex-1 rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow hover:bg-blue-500 disabled:opacity-60"
+                  >
+                    {isSubmitting ? 'Влизане...' : 'Вход'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={handleRegisterClick}
+                    className="flex-1 rounded-lg border border-blue-200 px-6 py-3 font-semibold text-blue-600 shadow hover:border-blue-300 hover:bg-blue-50 disabled:opacity-60"
+                  >
+                    {isSubmitting ? 'Създаване...' : 'Регистрация'}
+                  </button>
+                </div>
+              </form>
+            </section>
+          </main>
+        )
+      } />
+
+      {/* Редирект за всички непознати пътища към началната страница */}
+      <Route path="*" element={<Navigate to="/" />} />
+    </Routes>
   );
 }
 
