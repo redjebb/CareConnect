@@ -5,29 +5,23 @@ import {
   doc,
   DocumentData,
   getDocs,
-  QueryDocumentSnapshot
+  QueryDocumentSnapshot,
+  updateDoc 
 } from 'firebase/firestore';
 import { db } from './firebase';
-
-export type Admin = {
-  id: string;
-  name: string;
-  email: string;
-};
-
-type AdminPayload = {
-  name: string;
-  email: string;
-};
+// Импортираме общия интерфейс от types.ts
+import { Admin } from '../types';
 
 const adminsCollection = collection(db, 'admins');
 
+// Помощна функция за преобразуване на данните от Firestore
 const mapAdminDoc = (docSnapshot: QueryDocumentSnapshot<DocumentData>): Admin => {
   const data = docSnapshot.data();
   return {
     id: docSnapshot.id,
     name: typeof data.name === 'string' ? data.name : '',
-    email: typeof data.email === 'string' ? data.email : ''
+    email: typeof data.email === 'string' ? data.email : '',
+    status: (data.status === 'active' || data.status === 'pending') ? data.status : 'pending'
   };
 };
 
@@ -36,10 +30,12 @@ export async function getAdmins(): Promise<Admin[]> {
   return snapshot.docs.map(mapAdminDoc);
 }
 
-export async function addAdmin(admin: AdminPayload): Promise<string> {
-  const payload: AdminPayload = {
+// Променена функция, която приема и статус
+export async function addAdmin(admin: Omit<Admin, 'id'>): Promise<string> {
+  const payload = {
     name: admin.name.trim(),
-    email: admin.email.trim()
+    email: admin.email.trim(),
+    status: admin.status || 'pending'
   };
 
   const docRef = await addDoc(adminsCollection, payload);

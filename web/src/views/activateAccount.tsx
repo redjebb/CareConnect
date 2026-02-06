@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { db } from '../firebase'; // Увери се, че пътят до firebase конфигурацията ти е верен
+import { db } from '../firebase'; 
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { register } from '../services/authService'; 
 
@@ -15,7 +15,6 @@ export default function ActivateAccount() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Взимаме email от линка: ?email=...
   const emailParam = searchParams.get('email');
 
   useEffect(() => {
@@ -26,7 +25,6 @@ export default function ActivateAccount() {
       }
 
       try {
-        // Търсим дали има такава покана в базата
         const q = query(
           collection(db, 'invitations'), 
           where('email', '==', emailParam.trim())
@@ -34,11 +32,9 @@ export default function ActivateAccount() {
         const querySnapshot = await getDocs(q);
 
         if (querySnapshot.empty) {
-          // Ако не намира покана, значи линкът е грешен
           setStatus('invalid');
         } else {
           const invData = querySnapshot.docs[0].data();
-          // Ако поканата вече е приета, не позволяваме повторна активация
           if (invData.status === 'accepted') {
             setStatus('invalid');
           } else {
@@ -74,7 +70,7 @@ export default function ActivateAccount() {
       // 1. Регистрираме потребителя в Firebase Authentication
       await register(email, password);
 
-      // 2. Маркираме поканата като 'accepted'
+      // 2. Маркираме поканата като 'accepted' в колекция 'invitations'
       const invQ = query(collection(db, 'invitations'), where('email', '==', email));
       const invSnapshot = await getDocs(invQ);
       if (!invSnapshot.empty) {
@@ -84,13 +80,19 @@ export default function ActivateAccount() {
         });
       }
 
-      // 3. Обновяваме статуса на шофьора в колекция 'drivers' на 'active'
-      const drvQ = query(collection(db, 'drivers'), where('email', '==', email));
-      const drvSnapshot = await getDocs(drvQ);
-      if (!drvSnapshot.empty) {
-        await updateDoc(doc(db, 'drivers', drvSnapshot.docs[0].id), {
-          status: 'active'
-        });
+      // 3. Обновяваме статуса на 'active' в съответната роля (drivers ИЛИ admins)
+      // Проверяваме и двете колекции, защото потребителят може да е или едното, или другото
+      const roles = ['drivers', 'admins'];
+      
+      for (const role of roles) {
+        const roleQ = query(collection(db, role), where('email', '==', email));
+        const roleSnapshot = await getDocs(roleQ);
+        
+        if (!roleSnapshot.empty) {
+          await updateDoc(doc(db, role, roleSnapshot.docs[0].id), {
+            status: 'active'
+          });
+        }
       }
 
       alert("Акаунтът е активиран успешно! Вече можете да влезете в системата.");

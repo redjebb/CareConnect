@@ -1,7 +1,7 @@
 import 'leaflet/dist/leaflet.css';
 import { FormEvent, MouseEvent, useEffect, useState } from 'react';
 import { Driver } from './types';
-import { getDriverByEmail } from './driverService';
+import { getDriverByEmail } from './services/driverService';
 import { checkStandardAdminStatus } from './services/adminAccessService';
 import { FirebaseUser, login, logout, register, subscribeToAuthState } from './services/authService';
 import AdminDashboard from './views/AdminDashboard';

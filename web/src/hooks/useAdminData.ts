@@ -1,9 +1,11 @@
+import { collection, addDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import emailjs from '@emailjs/browser';
 import { addClient, deleteClient, getClientHistory, getClients } from '../clientService';
 import { addScheduleItem, deleteScheduleByClient, getScheduleItems } from '../scheduleService';
-import { addDriver, deleteDriver, getDrivers } from '../driverService';
-import { addAdmin, deleteAdmin, getAdmins } from '../adminService';
+import { addDriver, deleteDriver, getDrivers } from '../services/driverService';
+import { addAdmin, deleteAdmin, getAdmins } from '../services/adminService';
 import { getOpenIncidents } from '../incidentService';
 import {
   addRegistryEntry,
@@ -727,55 +729,42 @@ export function useAdminData(isMasterAdmin: boolean) {
   };
 
   const handleAddDriver = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  event.preventDefault();
+  const { name, email, phone, selectedCity, routeArea } = driverForm;
+  const trimmedEmail = email.trim();
+  const combinedRoute = `${selectedCity.trim()}, ${routeArea.trim()}`;
 
-    const { name, email, phone, selectedCity, routeArea } = driverForm;
-    const trimmedName = name.trim();
-    const trimmedEmail = email.trim();
-    const trimmedPhone = phone.trim();
-    const trimmedCity = selectedCity.trim();
-    const trimmedDistrict = routeArea.trim();
+  setDriverSubmitting(true);
+  try {
+    // 1. Добавяме шофьор
+    await addDriver({ 
+      name: name.trim(), 
+      email: trimmedEmail, 
+      phone: phone.trim(), 
+      routeArea: combinedRoute,
+      status: 'pending' 
+    });
 
-    if (!trimmedName || !trimmedEmail || !trimmedPhone || !trimmedCity || !trimmedDistrict) {
-      setDriversError('Моля, попълнете всички полета за шофьора.');
-      return;
-    }
+    // 2. Създаваме покана
+    await addDoc(collection(db, 'invitations'), {
+      email: trimmedEmail,
+      role: 'driver',
+      status: 'sent',
+      createdAt: new Date().toISOString()
+    });
 
-    const combinedRoute = `${trimmedCity}, ${trimmedDistrict}`;
+    // 3. EmailJS
+    const activationUrl = `https://careconnect-d7bd7.web.app/activate?email=${encodeURIComponent(trimmedEmail)}`;
+    await emailjs.send('service_dkng7ol', 'template_picgzcg', { email: trimmedEmail, link: activationUrl }, 'ikmstn4Jj0VVM1gWD');
 
-    setDriverSubmitting(true);
-    setDriversError(null);
-    try {
-      await addDriver({ name: trimmedName, email: trimmedEmail, phone: trimmedPhone, routeArea: combinedRoute });
-
-      // Send invitation email to the new driver
-      const activationUrl = `https://careconnect-d7bd7.web.app/activate?email=${encodeURIComponent(trimmedEmail)}`;
-      
-      try {
-        await emailjs.send(
-          'service_dkng7ol', 
-          'template_picgzcg', 
-          {
-            email: trimmedEmail,
-            link: activationUrl
-          },
-          'ikmstn4Jj0VVM1gWD' // Public key
-        );
-      } catch (emailError) {
-        console.error('Failed to send invitation email:', emailError);
-        // Driver was added successfully, but email failed - notify but don't block
-        setDriversError('Шофьорът е добавен, но изпращането на покана по имейл не успя.');
-      }
-
-      setDriverForm({ name: '', email: '', phone: '', routeArea: '', selectedCity: '' });
-      await fetchDrivers();
-    } catch (err) {
-      console.error('Неуспешно добавяне на шофьор.', err);
-      setDriversError('Неуспешно добавяне на шофьор.');
-    } finally {
-      setDriverSubmitting(false);
-    }
-  };
+    setDriverForm({ name: '', email: '', phone: '', routeArea: '', selectedCity: '' });
+    await fetchDrivers();
+  } catch (err) {
+    setDriversError('Грешка при добавяне.');
+  } finally {
+    setDriverSubmitting(false);
+  }
+};
 
   const handleDeleteDriver = async (driverId: string) => {
     setDriverDeletingId(driverId);
@@ -795,28 +784,35 @@ export function useAdminData(isMasterAdmin: boolean) {
   };
 
   const handleAddAdmin = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  event.preventDefault();
+  const trimmedEmail = adminForm.email.trim();
+  const trimmedName = adminForm.name.trim();
 
-    const trimmedName = adminForm.name.trim();
-    const trimmedEmail = adminForm.email.trim();
-    if (!trimmedName || !trimmedEmail) {
-      setAdminsError('Моля, попълнете името и имейла на администратора.');
-      return;
-    }
+  setAdminSubmitting(true);
+  try {
+    // 1. Добавяме админ
+    await addAdmin({ name: trimmedName, email: trimmedEmail, status: 'pending' });
 
-    setAdminSubmitting(true);
-    setAdminsError(null);
-    try {
-      await addAdmin({ name: trimmedName, email: trimmedEmail });
-      setAdminForm({ name: '', email: '' });
-      await fetchAdmins();
-    } catch (err) {
-      console.error('Неуспешно добавяне на администратор.', err);
-      setAdminsError('Неуспешно добавяне на администратор.');
-    } finally {
-      setAdminSubmitting(false);
-    }
-  };
+    // 2. Създаваме покана
+    await addDoc(collection(db, 'invitations'), {
+      email: trimmedEmail,
+      role: 'admin',
+      status: 'sent',
+      createdAt: new Date().toISOString()
+    });
+
+    // 3. EmailJS
+    const activationUrl = `https://careconnect-d7bd7.web.app/activate?email=${encodeURIComponent(trimmedEmail)}`;
+    await emailjs.send('service_dkng7ol', 'template_picgzcg', { email: trimmedEmail, link: activationUrl }, 'ikmstn4Jj0VVM1gWD');
+
+    setAdminForm({ name: '', email: '' });
+    await fetchAdmins();
+  } catch (err) {
+    setAdminsError('Грешка при добавяне.');
+  } finally {
+    setAdminSubmitting(false);
+  }
+};
 
   const handleDeleteAdmin = async (adminId: string) => {
     setAdminDeletingId(adminId);

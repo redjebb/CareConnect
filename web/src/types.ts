@@ -25,9 +25,16 @@ export interface Driver {
   email: string;
   phone: string;
   routeArea: string;
+  status: 'pending' | 'active';
 }
 
-// НОВИ МОДЕЛИ, които липсваха:
+export interface Admin {
+  id: string;
+  name: string;
+  email: string;
+  status: 'pending' | 'active';
+}
+
 export interface ScheduleItem {
     id: string;
     clientId: string;
