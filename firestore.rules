@@ -35,7 +35,9 @@ service cloud.firestore {
     // ----------------------------------------------------
     match /drivers/{driverId} {
       allow read: if request.auth != null; 
-      allow write: if isAnyAdmin();
+      allow create, delete: if isAnyAdmin();
+      // ПРОМЯНА: Позволяваме на активационната страница да смени статуса на 'active'
+      allow update: if true; 
     }
 
     match /schedule/{scheduleId} {
@@ -71,19 +73,17 @@ service cloud.firestore {
     // 7. DELIVERY HISTORY (Колекция за отчети)
     // ----------------------------------------------------
     match /deliveryHistory/{docId} {
-  allow read, write: if request.auth != null;
-}
+      allow read, write: if request.auth != null;
+    }
 
-// ----------------------------------------------------
+    // ----------------------------------------------------
     // 8. INVITATIONS (Система за активация)
     // ----------------------------------------------------
     match /invitations/{invitationId} {
-      // Позволяваме четене без логване, за да може страницата 
-      // за активация да провери имейла преди потребителят да има акаунт.
       allow read: if true; 
-      
-      // Само администраторите могат да създават и управляват покани.
-      allow write: if isAnyAdmin();
+      // Позволяваме на активационната страница да смени статуса на 'accepted'
+      allow update: if true; 
+      allow create, delete: if isAnyAdmin();
     }
   }
 }
