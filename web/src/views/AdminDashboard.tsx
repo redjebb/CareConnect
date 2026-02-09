@@ -7,7 +7,8 @@ import AdminRegistryView from './AdminRegistryView';
 import UserProfileModal from '../components/UserProfileModal';
 import SignatureViewerModal from '../components/SignatureViewerModal';
 import { collection, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
-import { db } from '../services/firebase'; 
+import { db } from '../services/firebase';
+import DriverProfileModal from '../components/DriverProfileModal'; 
 
 const CITY_DATA: Record<string, string[]> = {
   София: [
@@ -143,6 +144,15 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
     client: '',
     driver: ''
   });
+
+  // Driver Profile State
+  const [isDriverProfileOpen, setIsDriverProfileOpen] = useState(false);
+  const [selectedDriverForProfile, setSelectedDriverForProfile] = useState<any>(null);
+
+  const handleOpenDriverProfile = (driver: any) => {
+    setSelectedDriverForProfile(driver);
+    setIsDriverProfileOpen(true);
+  };
 
   // Handler for opening signature preview
   const handleOpenSignaturePreview = (item: {
@@ -478,6 +488,7 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
     driverForm={driverForm}
     onDriverInputChange={handleDriverInputChange}
     onDriverCityChange={handleDriverCityChange}
+    onViewProfile={handleOpenDriverProfile}
     onSubmit={async (event) => {
       event.preventDefault();
 
@@ -505,6 +516,12 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
           isLoading={profileLoading}
           errorMessage={profileError}
           onClose={handleCloseProfile}
+        />
+
+        <DriverProfileModal 
+          isOpen={isDriverProfileOpen} 
+          onClose={() => setIsDriverProfileOpen(false)} 
+          driver={selectedDriverForProfile} 
         />
 
         {/* Signature Viewer Modal - MUST BE AT THE VERY END */}

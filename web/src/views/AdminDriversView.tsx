@@ -21,6 +21,7 @@ type AdminDriversViewProps = {
   onDriverCityChange: (city: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onDeleteDriver: (driverId: string) => void;
+  onViewProfile: (driver: any) => void; // Добавено правилно в типа
 };
 
 const DriverStatusBadge = ({ email, invitations }: { email: string; invitations: any[] }) => {
@@ -55,11 +56,11 @@ export default function AdminDriversView({
   onDriverInputChange,
   onDriverCityChange,
   onSubmit,
-  onDeleteDriver
+  onDeleteDriver,
+  onViewProfile, // Вече е достъпно тук
 }: AdminDriversViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Филтриране и сортиране по азбучен ред (Кирилица)
   const filteredDrivers = drivers
     .filter(driver =>
       driver.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -103,7 +104,6 @@ export default function AdminDriversView({
             <label className="block text-sm font-medium text-slate-700">Телефон</label>
             <input
               type="tel"
-              pattern="[0-9+ ]{8,}"
               value={driverForm.phone}
               onChange={event => onDriverInputChange('phone', event.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-200 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
@@ -190,37 +190,45 @@ export default function AdminDriversView({
               <thead>
                 <tr className="text-left text-slate-500 uppercase text-[10px] tracking-wider">
                   <th className="px-4 py-3 font-bold italic">Име</th>
-                  <th className="px-4 py-3 font-bold italic">Контакт</th>
-                  <th className="px-4 py-3 font-bold italic">Район</th>
-                  <th className="px-4 py-3 font-bold italic">Статус</th>
-                  <th className="px-4 py-3 font-bold italic text-right">Действие</th>
+                  <th className="px-4 py-3 font-bold italic text-center">Статус</th>
+                  <th className="px-4 py-3 font-bold italic text-right">Действия</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredDrivers.map(driver => (
                   <tr key={driver.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-4 py-3 font-semibold text-slate-900">{driver.name}</td>
                     <td className="px-4 py-3">
-                      <div className="text-slate-600 font-medium">{driver.email}</div>
-                      <div className="text-[11px] text-slate-400">{driver.phone}</div>
+                      <div className="font-semibold text-slate-900">{driver.name}</div>
+                      <div className="text-[11px] text-slate-400">{driver.routeArea}</div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{driver.routeArea}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 text-center">
                       <DriverStatusBadge email={driver.email} invitations={invitations} />
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm(`Сигурни ли сте, че искате да изтриете ${driver.name}?`)) {
-                            onDeleteDriver(driver.id);
-                          }
-                        }}
-                        disabled={driverDeletingId === driver.id}
-                        className="rounded-md border border-red-200 px-3 py-1 text-xs font-bold text-red-600 hover:bg-red-600 hover:text-white transition-all disabled:opacity-60"
-                      >
-                        {driverDeletingId === driver.id ? '...' : 'Изтрий'}
-                      </button>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        {/* БУТОН ЗА ПРОФИЛ */}
+                        <button
+                          type="button"
+                          onClick={() => onViewProfile(driver)}
+                          className="rounded-md bg-blue-50 px-3 py-1 text-xs font-bold text-blue-600 hover:bg-blue-600 hover:text-white transition-all"
+                        >
+                          ПРОФИЛ
+                        </button>
+
+                        {/* БУТОН ЗА ИЗТРИВАНЕ */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Сигурни ли сте, че искате да изтриете ${driver.name}?`)) {
+                              onDeleteDriver(driver.id);
+                            }
+                          }}
+                          disabled={driverDeletingId === driver.id}
+                          className="rounded-md border border-red-200 px-3 py-1 text-xs font-bold text-red-600 hover:bg-red-600 hover:text-white transition-all disabled:opacity-60"
+                        >
+                          {driverDeletingId === driver.id ? '...' : 'Изтрий'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
