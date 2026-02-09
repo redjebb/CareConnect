@@ -1,18 +1,18 @@
 import { collection, addDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../services/firebase';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import emailjs from '@emailjs/browser';
-import { addClient, deleteClient, getClientHistory, getClients } from '../clientService';
-import { addScheduleItem, deleteScheduleByClient, getScheduleItems } from '../scheduleService';
+import { addClient, deleteClient, getClientHistory, getClients } from '../services/clientService';
+import { addScheduleItem, deleteScheduleByClient, getScheduleItems } from '../services/scheduleService';
 import { addDriver, deleteDriver, getDrivers } from '../services/driverService';
 import { addAdmin, deleteAdmin, getAdmins } from '../services/adminService';
-import { getOpenIncidents } from '../incidentService';
+import { getOpenIncidents } from '../services/incidentService';
 import {
   addRegistryEntry,
   deleteRegistryEntry,
   getRegistryEntries,
   updateRegistryEntry
-} from '../clientsRegistryService';
+} from '../services/clientsRegistryService';
 import type { Client, ClientHistoryEntry, ClientRegistryEntry, Driver, Incident, ScheduleItem } from '../types';
 
 type ClientWithSchedule = Client & { nextVisitDate?: string | null };
@@ -231,7 +231,7 @@ export function useAdminData(isMasterAdmin: boolean) {
       const allClients = await getClients();
       const startOfToday = startOfDay(new Date());
 
-      const enrichedClients: ClientWithSchedule[] = allClients.map(client => {
+      const enrichedClients: ClientWithSchedule[] = allClients.map((client: Client) => {
         const upcomingDates = scheduleItems
           .filter(item => item.clientId === client.id)
           .map(item => {

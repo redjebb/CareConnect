@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CircleMarker, MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Client, Driver, ScheduleItem } from '../types';
-import { getClients, getClientsByDriver, updateClientLastCheckIn, updateClientSignatures } from '../clientService';
-import { getScheduleItems } from '../scheduleService';
-import { addIncident } from '../incidentService';
+import { getClients, getClientsByDriver, updateClientLastCheckIn, updateClientSignatures } from '../services/clientService';
+import { getScheduleItems } from '../services/scheduleService';
+import { addIncident } from '../services/incidentService';
 import IncidentReporter from '../IncidentReporter';
 import DriverRoute, { DriverVisit as DriverVisitCard } from '../components/DriverRoute';
 import SignatureModal from '../components/SignatureModal';
 import {completeDelivery} from '../services/deliveryService';
+import { startShift, endShift } from '../services/driverStatsService';
 
 type DriverVisit = {
   client: Client;
@@ -576,8 +577,10 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         'Доставено и подписано от двете страни'
       );
 
+      // ВНИМАНИЕ: Тук добавяме clientName
       await completeDelivery({
         clientId: clientId,
+        clientName: targetClient?.name || '---',
         egn: targetClient?.egn || 'N/A',
         driverId: currentDriver.id,
         startLocation: currentPosition || { lat: 0, lng: 0 },
@@ -585,7 +588,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         timestamp: new Date(),
         mealType: (targetClient as any)?.mealType || 'Стандартно меню',
         mealCount: Number((targetClient as any)?.mealCount) || 1
-      });
+      } as any);
 
       console.log('Delivery history record successfully created for client:', clientId);
 
@@ -642,7 +645,6 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
   const handleSubmitIncidentReport = useCallback(
     async (incidentType: string, description: string) => {
       if (!incidentClient) {
-        console.warn('Cannot submit incident: no client selected');
         alert('Моля, изберете клиент.');
         return;
       }
@@ -662,16 +664,17 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
           description
         });
 
-        // Save issue to deliveryHistory with status: 'issue'
+        // ВНИМАНИЕ: Тук също добавяме clientName
         await completeDelivery({
           clientId: incidentClient.id,
+          clientName: incidentClient.name || '---',
           egn: incidentClient?.egn || 'N/A',
           driverId: currentDriver.id,
           startLocation: currentPosition || { lat: 0, lng: 0 },
           endLocation: geoCache[getAddressKey(incidentClient?.address || '')] || { lat: 0, lng: 0 },
           timestamp: new Date(),
           mealType: (incidentClient as any)?.mealType || 'Стандартно меню',
-          mealCount: 0, // No meal delivered for issues
+          mealCount: 0,
           status: 'issue',
           issueType: incidentType,
           issueDescription: description
@@ -683,37 +686,52 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         );
 
         await handleIncidentReportSuccess();
-        
         alert('✅ Сигналът е изпратен успешно!');
         handleCloseIncidentModal();
       } catch (err) {
         console.error('Failed to submit incident:', err);
-        alert('Грешка при изпращане на сигнала. Моля, опитайте отново.');
+        alert('Грешка при изпращане на сигнала.');
       }
     },
     [incidentClient, currentDriver?.id, handleIncidentReportSuccess, isShiftActive, currentPosition, geoCache]
   );
 
-  const handleStartShift = () => {
-    try {
-      const now = new Date().toISOString();
-      setIsShiftActive(true);
-      setShiftStartTime(now);
-      setShowStartShiftModal(false);
-
-      saveShiftToStorage({
-        isActive: true,
-        startTime: now,
-        deliveredCount: 0
-      });
-    } catch (err) {
-      console.error('Failed to start shift:', err);
-      alert('Грешка при започване на смяната. Моля, опитайте отново.');
+  const handleStartShift = async () => { // Добавяме async
+  try {
+    // 1. Първо записваме в базата данни (Firestore)
+    if (currentDriver?.id) {
+      await startShift(currentDriver.id); 
     }
-  };
 
-  const handleEndShift = () => {
+    // 2. След това обновяваме локалното състояние (твоя оригинален код)
+    const now = new Date().toISOString();
+    setIsShiftActive(true);
+    setShiftStartTime(now);
+    setShowStartShiftModal(false);
+
+    // 3. Запазваме в локалния сторидж за всеки случай
+    saveShiftToStorage({
+      isActive: true,
+      startTime: now,
+      deliveredCount: 0
+    });
+
+    console.log("✅ Смяната е отразена в базата и локално.");
+  } catch (err) {
+    console.error('Failed to start shift:', err);
+    alert('Грешка при започване на смяната в базата. Моля, проверете интернета си.');
+  }
+};
+
+  const handleEndShift = async () => {
     try {
+      // 1. Първо затваряме смяната в Firestore
+      if (currentDriver?.id) {
+        await endShift(currentDriver.id);
+        console.log("✅ Смяната е приключена в Firestore");
+      }
+
+      // 2. Изчисляваме статистиката за крайния модал (Summary)
       const endTime = new Date().toISOString();
       const duration = shiftStartTime ? formatDuration(shiftStartTime) : '—';
 
@@ -734,7 +752,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         return Number.isNaN(parsed.getTime()) ? null : parsed;
       };
 
-      // Filter entries within shift time window
+      // Филтрираме задачите, направени по време на тази смяна
       const entriesDuringShift = (todayVisits ?? []).filter(visit => {
         if (!visit?.client) return false;
         
@@ -755,36 +773,29 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         return entryTime >= shiftStartDate && entryTime <= shiftEndDate;
       });
 
-      // Count deliveries (success) - entries that are NOT issues
       const deliveredDuringShift = entriesDuringShift.filter(visit => 
         !isIssueEntry(visit.client.lastCheckIn)
       ).length;
 
-      // Count issues - entries that ARE issues
       const issuesDuringShift = entriesDuringShift.filter(visit => 
         isIssueEntry(visit.client.lastCheckIn)
       ).length;
 
-      // Get client IDs for successful deliveries only (for distance calculation)
       const deliveredClientIds = new Set(
         entriesDuringShift
           .filter(visit => !isIssueEntry(visit.client.lastCheckIn))
           .map(v => v.client.id)
       );
       
-      // Calculate GPS distance ONLY for successful deliveries
       const distanceDuringShift = (optimizedTodayVisitsWithMeta ?? []).reduce((total, visit) => {
         if (!visit?.client) return total;
-        
         if (!deliveredClientIds.has(visit.client.id)) return total;
-        
         if (visit.distanceFromPreviousKm) {
           return total + visit.distanceFromPreviousKm;
         }
         return total;
       }, 0);
 
-      // Count remaining pending tasks for TODAY only
       const remainingPending = (todayVisits ?? []).filter(visit => {
         if (!visit?.client) return false;
         return !Boolean(
@@ -795,6 +806,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         );
       }).length;
 
+      // 3. Подготвяме данните за показване в модала
       setShiftSummary({
         startTime: shiftStartTime || endTime,
         endTime,
@@ -805,13 +817,15 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         totalDistanceKm: Math.round(distanceDuringShift * 10) / 10
       });
 
+      // 4. Сменяме модалите
       setShowEndShiftModal(false);
       setShowSummaryModal(true);
+
     } catch (err) {
       console.error('Failed to end shift:', err);
       alert('Грешка при завършване на смяната. Моля, опитайте отново.');
     }
-  };
+  }; 
 
   const handleConfirmSummary = () => {
     try {
