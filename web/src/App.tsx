@@ -3,7 +3,7 @@ import { FormEvent, MouseEvent, useEffect, useState } from 'react';
 import { Driver } from './types';
 import { getDriverByEmail } from './services/driverService';
 import { checkStandardAdminStatus } from './services/adminAccessService';
-import { FirebaseUser, login, logout, subscribeToAuthState } from './services/authService';
+import { FirebaseUser, getFriendlyErrorMessage, login, logout, subscribeToAuthState } from './services/authService';
 import AdminDashboard from './views/AdminDashboard';
 import DriverView from './views/DriverView';
 import { Routes, Route, Navigate } from 'react-router-dom';
@@ -110,22 +110,16 @@ function App() {
 
   // --- HANDLERS ---
 
-  const handleAuthAction = async (action: 'login' | 'register') => {
+  const handleAuthAction = async (action: 'login') => {
     setIsSubmitting(true);
     setError(null);
 
     try {
-      if (action === 'login') {
-        await login(email.trim(), password);
-      }
-
+      await login(email.trim(), password);
       setPassword('');
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Възникна грешка. Моля, опитайте отново.');
-      }
+    } catch (err: any) {
+      const friendlyMessage = getFriendlyErrorMessage(err.code);
+      setError(friendlyMessage);
     } finally {
       setIsSubmitting(false);
     }

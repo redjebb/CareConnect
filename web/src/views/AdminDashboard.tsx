@@ -9,6 +9,7 @@ import SignatureViewerModal from '../components/SignatureViewerModal';
 import { collection, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import DriverProfileModal from '../components/DriverProfileModal'; 
+import { getFriendlyErrorMessage } from '../services/authService';
 
 const CITY_DATA: Record<string, string[]> = {
   София: [
@@ -267,6 +268,12 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
     handleDeleteAdmin
   } = adminData;
 
+  const translatedClientsError = clientsError ? getFriendlyErrorMessage(clientsError) : null;
+  const translatedDriversError = driversError ? getFriendlyErrorMessage(driversError) : null;
+  const translatedAdminsError = adminsError ? getFriendlyErrorMessage(adminsError) : null;
+  const translatedRegistryError = registryError ? getFriendlyErrorMessage(registryError) : null;
+  const translatedProfileError = profileError ? getFriendlyErrorMessage(profileError) : null;
+
   const [invitations, setInvitations] = useState<any[]>([]);
 
   // Следим колекцията в реално време
@@ -389,7 +396,7 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
     admins={admins}
     invitations={invitations}
     adminsLoading={adminsLoading}
-    adminsError={adminsError}
+    adminsError={translatedAdminsError}
     adminSubmitting={adminSubmitting}
     adminDeletingId={adminDeletingId}
     adminForm={adminForm}
@@ -411,7 +418,7 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
             registryForm={registryForm}
             registryEditingId={registryEditingId}
             registrySubmitting={registrySubmitting}
-            registryError={registryError}
+            registryError={translatedRegistryError}
             entries={sortedRegistryEntries}
             registryLoading={registryLoading}
             registryDeletingId={registryDeletingId}
@@ -462,7 +469,7 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
             onClientInputChange={handleClientInputChange}
             driversLoading={driversLoading}
             clientSubmitting={clientSubmitting}
-            clientsError={clientsError}
+            clientsError={translatedClientsError}
             onSubmitClient={event => void handleAddClient(event)}
             onAddForToday={() => void handleAddClientForSelectedDate()}
             clientsLoading={clientsLoading}
@@ -482,7 +489,7 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
     drivers={drivers}
     invitations={invitations}
     driversLoading={driversLoading}
-    driversError={driversError}
+    driversError={translatedDriversError}
     driverSubmitting={driverSubmitting}
     driverDeletingId={driverDeletingId}
     driverForm={driverForm}
@@ -514,7 +521,7 @@ export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: A
           entry={profileEntry}
           history={profileHistory}
           isLoading={profileLoading}
-          errorMessage={profileError}
+          errorMessage={translatedProfileError}
           onClose={handleCloseProfile}
         />
 

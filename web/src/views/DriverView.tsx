@@ -10,6 +10,7 @@ import DriverRoute, { DriverVisit as DriverVisitCard } from '../components/Drive
 import SignatureModal from '../components/SignatureModal';
 import {completeDelivery} from '../services/deliveryService';
 import { startShift, endShift } from '../services/driverStatsService';
+import { getFriendlyErrorMessage } from '../services/authService';
 
 type DriverVisit = {
   client: Client;
@@ -40,7 +41,7 @@ const saveShiftToStorage = (data: ShiftData) => {
   try {
     localStorage.setItem(SHIFT_STORAGE_KEY, JSON.stringify(data));
   } catch (err) {
-    console.error('Failed to save shift data:', err);
+    console.error('Грешка при запис на данните за смяната в локалното хранилище:', err);
   }
 };
 
@@ -48,7 +49,7 @@ const clearShiftFromStorage = () => {
   try {
     localStorage.removeItem(SHIFT_STORAGE_KEY);
   } catch (err) {
-    console.error('Failed to clear shift data:', err);
+    console.error('Грешка при изчистване на данните за смяната от локалното хранилище:', err);
   }
 };
 
@@ -318,9 +319,10 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         if (isMounted) {
           setDriverClients(data);
         }
-      } catch (err) {
+      } catch (err: any) {
         if (isMounted) {
-          setDriverClientsError('Неуспешно зареждане на клиентите за маршрута.');
+          const friendlyMessage = getFriendlyErrorMessage(err.code || err.message);
+          setDriverClientsError(friendlyMessage);
         }
       } finally {
         if (isMounted) {
@@ -595,9 +597,10 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
       const refreshed = await getClientsByDriver(currentDriver.id);
       setDriverClients(refreshed);
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Грешка при финализиране на доставка:", err);
-      setDriverClientsError('Неуспешно записване на посещението в историята.');
+      const friendlyMessage = getFriendlyErrorMessage(err.code || err.message);
+      setDriverClientsError(friendlyMessage);
     } finally {
       setDriverActionClientId(null);
     }
@@ -664,7 +667,6 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
           description
         });
 
-        // ВНИМАНИЕ: Тук също добавяме clientName
         await completeDelivery({
           clientId: incidentClient.id,
           clientName: incidentClient.name || '---',
@@ -688,10 +690,11 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         await handleIncidentReportSuccess();
         alert('✅ Сигналът е изпратен успешно!');
         handleCloseIncidentModal();
-      } catch (err) {
-        console.error('Failed to submit incident:', err);
-        alert('Грешка при изпращане на сигнала.');
-      }
+      } catch (err: any) {
+        console.error('Грешка при изпращане на сигнал:', err);
+        const friendlyMessage = getFriendlyErrorMessage(err.code || err.message);
+        alert(friendlyMessage);
+}
     },
     [incidentClient, currentDriver?.id, handleIncidentReportSuccess, isShiftActive, currentPosition, geoCache]
   );
@@ -717,10 +720,10 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
     });
 
     console.log("✅ Смяната е отразена в базата и локално.");
-  } catch (err) {
-    console.error('Failed to start shift:', err);
-    alert('Грешка при започване на смяната в базата. Моля, проверете интернета си.');
-  }
+  } catch (err: any) {
+  console.error('Грешка при започване на смяна:', err); 
+  alert(getFriendlyErrorMessage(err.code || err.message));
+}
 };
 
   const handleEndShift = async () => {
@@ -821,10 +824,10 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
       setShowEndShiftModal(false);
       setShowSummaryModal(true);
 
-    } catch (err) {
-      console.error('Failed to end shift:', err);
-      alert('Грешка при завършване на смяната. Моля, опитайте отново.');
-    }
+    } catch (err: any) {
+  console.error('Грешка при завършване на смяна:', err); 
+  alert(getFriendlyErrorMessage(err.code || err.message));
+}
   }; 
 
   const handleConfirmSummary = () => {
@@ -834,9 +837,9 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
       setShiftSummary(null);
       setShowSummaryModal(false);
       clearShiftFromStorage();
-    } catch (err) {
-      console.error('Failed to confirm summary:', err);
-    }
+    }catch (err) {
+    console.error('Грешка при потвърждаване на дневния отчет:', err);
+  }
   };
 
   const handleLogoutWithCheck = () => {

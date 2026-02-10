@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { db } from '../services/firebase'; 
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { createUserAccount } from '../services/authService';
+import { createUserAccount, getFriendlyErrorMessage } from '../services/authService';
 
 export default function ActivateAccount() {
   const [searchParams] = useSearchParams();
@@ -98,9 +98,10 @@ export default function ActivateAccount() {
       alert("Акаунтът е активиран успешно! Вече можете да влезете в системата.");
       navigate('/'); 
     } catch (err: any) {
-      console.error("Грешка при активация:", err);
-      setErrorMessage(err.message || "Възникна грешка при активацията.");
-    } finally {
+  console.error("Грешка при активация:", err);
+  const friendlyMessage = getFriendlyErrorMessage(err.code);
+  setErrorMessage(friendlyMessage);
+} finally {
       setIsSubmitting(false);
     }
   };
