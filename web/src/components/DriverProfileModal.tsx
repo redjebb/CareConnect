@@ -166,10 +166,10 @@ export default function DriverProfileModal({ isOpen, onClose, driver }: DriverPr
             {!previewType ? (
               <>
                 <button onClick={() => setPreviewType('daily')} className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
-                  <FileText className="w-4 h-4 text-blue-600" /> Преглед Дневен
+                  <FileText className="w-4 h-4 text-blue-600" /> Дневен отчет
                 </button>
                 <button onClick={() => setPreviewType('monthly')} className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
-                  <FileText className="w-4 h-4 text-blue-600" /> Преглед Месечен
+                  <FileText className="w-4 h-4 text-blue-600" /> Месечен отчет
                 </button>
               </>
             ) : (
@@ -235,7 +235,7 @@ export default function DriverProfileModal({ isOpen, onClose, driver }: DriverPr
                           </div>
                         </div>
                         <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${item.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                          {item.status === 'success' ? 'УСПЕХ' : 'ПРОБЛЕМ'}
+                          {item.status === 'success' ? 'ДОСТАВЕНО' : 'ПРОБЛЕМ'}
                         </span>
                       </div>
                     ))}
@@ -262,7 +262,7 @@ export default function DriverProfileModal({ isOpen, onClose, driver }: DriverPr
                         <td className="px-4 py-3 font-medium">{item.clientName || '---'}</td>
                         <td className="px-4 py-3 text-center">
                           <span className={item.status === 'success' ? 'text-emerald-600 font-bold' : 'text-red-600 font-bold'}>
-                            {item.status === 'success' ? 'Успех' : 'Проблем'}
+                            {item.status === 'success' ? 'ДОСТАВЕНО' : 'ПРОБЛЕМ'}
                           </span>
                         </td>
                       </tr>
