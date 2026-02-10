@@ -13,7 +13,7 @@ export async function login(email: string, password: string): Promise<void> {
   await signInWithEmailAndPassword(auth, email.trim(), password);
 }
 
-export async function register(email: string, password: string): Promise<void> {
+export async function createUserAccount(email: string, password: string): Promise<void> {
   await createUserWithEmailAndPassword(auth, email.trim(), password);
 }
 

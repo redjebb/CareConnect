@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { db } from '../services/firebase'; 
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { register } from '../services/authService'; 
+import { createUserAccount } from '../services/authService';
 
 export default function ActivateAccount() {
   const [searchParams] = useSearchParams();
@@ -68,7 +68,7 @@ export default function ActivateAccount() {
     setIsSubmitting(true);
     try {
       // 1. Регистрираме потребителя в Firebase Authentication
-      await register(email, password);
+      await createUserAccount(email, password);
 
       // 2. Маркираме поканата като 'accepted' в колекция 'invitations'
       const invQ = query(collection(db, 'invitations'), where('email', '==', email));

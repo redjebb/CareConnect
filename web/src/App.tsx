@@ -3,7 +3,7 @@ import { FormEvent, MouseEvent, useEffect, useState } from 'react';
 import { Driver } from './types';
 import { getDriverByEmail } from './services/driverService';
 import { checkStandardAdminStatus } from './services/adminAccessService';
-import { FirebaseUser, login, logout, register, subscribeToAuthState } from './services/authService';
+import { FirebaseUser, login, logout, subscribeToAuthState } from './services/authService';
 import AdminDashboard from './views/AdminDashboard';
 import DriverView from './views/DriverView';
 import { Routes, Route, Navigate } from 'react-router-dom';
@@ -117,9 +117,8 @@ function App() {
     try {
       if (action === 'login') {
         await login(email.trim(), password);
-      } else {
-        await register(email.trim(), password);
       }
+
       setPassword('');
     } catch (err) {
       if (err instanceof Error) {
@@ -148,13 +147,6 @@ function App() {
     void handleAuthAction('login');
   };
 
-  const handleRegisterClick = (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    if (!ensureCredentials()) {
-      return;
-    }
-    void handleAuthAction('register');
-  };
 
   const handleLogout = async () => {
     await logout();
@@ -216,14 +208,14 @@ function App() {
             <section className="mx-auto grid w-full max-w-5xl gap-10 rounded-3xl bg-white/80 p-8 shadow-xl backdrop-blur-sm md:grid-cols-2">
               <div className="flex flex-col justify-center">
                 <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">CareConnect</p>
-                <h1 className="mt-3 text-3xl font-bold text-slate-900">Вход към административната платформа</h1>
+                <h1 className="mt-3 text-3xl font-bold text-slate-900">Добре дошли в CareConnect</h1>
                 <p className="mt-4 text-slate-600">
-                  Следете шофьорите на терен, управлявайте клиентите и генерирайте месечни отчети от едно място.
+                  Универсална платформа за управление на социални доставки. Влезте в профила си, за да управлявате маршрути, клиенти и отчети.
                 </p>
                 <ul className="mt-6 space-y-2 text-sm text-slate-600">
-                  <li>• Реално време за маршрути и SOS сигнали</li>
-                  <li>• Управление на клиенти и шофьори</li>
-                  <li>• Автоматизирани HTML/PDF отчети</li>
+                  <li>• Управление на маршрути в реално време</li>
+                  <li>• Дигитални подписи и SOS сигнали</li>
+                  <li>• Автоматизирано генериране на отчети</li>
                 </ul>
               </div>
 
@@ -260,17 +252,9 @@ function App() {
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="flex-1 rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow hover:bg-blue-500 disabled:opacity-60"
+                    className="w-full rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow hover:bg-blue-500 disabled:opacity-60"
                   >
                     {isSubmitting ? 'Влизане...' : 'Вход'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={handleRegisterClick}
-                    className="flex-1 rounded-lg border border-blue-200 px-6 py-3 font-semibold text-blue-600 shadow hover:border-blue-300 hover:bg-blue-50 disabled:opacity-60"
-                  >
-                    {isSubmitting ? 'Създаване...' : 'Регистрация'}
                   </button>
                 </div>
               </form>
