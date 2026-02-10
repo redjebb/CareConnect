@@ -88,7 +88,7 @@ export default function IncidentReporter({ client, onClose, onSubmitReport }: In
               value={description}
               onChange={event => setDescription(event.target.value)}
               rows={4}
-              className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-100"
+              className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-100"
               placeholder="Опишете какво се случи..."
             />
           </div>

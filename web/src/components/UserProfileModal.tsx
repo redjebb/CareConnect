@@ -169,7 +169,6 @@ export default function UserProfileModal({
     className: string;
     emoji: string;
   } => {
-    // Priority 1: Check for issue status
     if (item.status === 'issue' || item.hasIssue === true) {
       return {
         type: 'issue',
@@ -179,7 +178,6 @@ export default function UserProfileModal({
       };
     }
     
-    // Priority 2: Check for success/completed status
     if (item.status === 'success' || item.completed === true) {
       return {
         type: 'success',
@@ -189,7 +187,6 @@ export default function UserProfileModal({
       };
     }
     
-    // Default: Pending
     return {
       type: 'pending',
       label: 'ПРЕДСТОИ',
@@ -206,10 +203,6 @@ export default function UserProfileModal({
     }
   }, [reportDate]);
 
-  // Count total deliveries for the period
-  const totalDeliveriesCount = currentMonthData.length;
-
-  // Count successful deliveries (for display)
   const successfulDeliveriesCount = useMemo(() => {
     return currentMonthData.filter(item => {
       const isIssue = item.status === 'issue' || item.hasIssue === true;
@@ -218,14 +211,12 @@ export default function UserProfileModal({
     }).length;
   }, [currentMonthData]);
 
-  // Count issues (for display)
   const issuesCount = useMemo(() => {
     return currentMonthData.filter(item => 
       item.status === 'issue' || item.hasIssue === true
     ).length;
   }, [currentMonthData]);
 
-  // Calculate portions from ONLY successful deliveries - exclude issues
   const deliveredPortionsThisMonth = useMemo(() => {
     if (currentMonthData.length === 0) return 0;
     
@@ -241,21 +232,12 @@ export default function UserProfileModal({
       }, 0);
   }, [currentMonthData]);
 
-  // Helper to check if delivery is an issue
   const isDeliveryIssue = (item: MonthlyDeliveryData): boolean => {
     return item.status === 'issue' || item.hasIssue === true;
   };
 
-  // Helper to get print status text
-  const getPrintStatusText = (item: MonthlyDeliveryData): string => {
-    if (isDeliveryIssue(item)) return '* ПРОБЛЕМ';
-    if (item.status === 'success' || item.completed === true) return 'Доставено';
-    return 'Предстои';
-  };
-
-  // Helper to get portion count for print (0 for issues)
+  // ФУНКЦИЯТА Е КОРЕГИРАНА: Сега връща реалния брой за печат
   const getPrintPortionCount = (item: MonthlyDeliveryData): number => {
-    if (isDeliveryIssue(item)) return 0;
     return Number(item.mealCount) || 1;
   };
 
@@ -273,7 +255,6 @@ export default function UserProfileModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="w-full max-w-4xl rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-        {/* Print-only CSS + template visibility */}
         <style>{`
           @media screen {
             #printable-report { display: none; }
@@ -363,14 +344,14 @@ export default function UserProfileModal({
                       </span>
                     </div>
 
-                    {/* Meal info for successful deliveries */}
-                    {deliveryStatus.type === 'success' && item.mealType && item.mealType !== '—' && (
+                    {/* Meal info - Сега се показва за всички, включително проблеми */}
+                    {item.mealType && item.mealType !== '—' && (
                       <div className="mt-2 text-sm text-slate-600">
                         {item.mealCount}× {item.mealType}
                       </div>
                     )}
 
-                    {/* Issue details - show reason in red text below badge */}
+                    {/* Issue details */}
                     {isIssue && (item.issueType || item.issueDescription) && (
                       <div className="mt-2 rounded-md bg-red-100/50 p-2">
                         {item.issueType && (
@@ -427,7 +408,7 @@ export default function UserProfileModal({
             </div>
           </div>
 
-          {/* Print Content */}
+          {/* Printable Report Content */}
           <div id="printable-report">
             <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 0.5 }}>
               МЕСЕЧЕН ОТЧЕТ ЗА ДОСТАВКА НА ХРАНА
@@ -443,22 +424,19 @@ export default function UserProfileModal({
               <div><strong>Месец:</strong> {reportPeriodLabel}</div>
             </div>
 
-            {/* Summary Section - Печатна версия */}
-<div style={{ marginTop: 16, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4 }}>
-  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-    <div style={{ color: '#059669' }}>
-      <div style={{ fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>Успешно доставени порции</div>
-      <div style={{ fontSize: 20, fontWeight: 'bold' }}>{deliveredPortionsThisMonth}</div>
-    </div>
-    
-    <div style={{ color: '#dc2626' }}>
-      <div style={{ fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>Проблемни / Пропуснати</div>
-      <div style={{ fontSize: 20, fontWeight: 'bold' }}>{issuesCount}</div>
-    </div>
-  </div>
-</div>
+            <div style={{ marginTop: 16, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                <div style={{ color: '#059669' }}>
+                  <div style={{ fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>Успешно доставени порции</div>
+                  <div style={{ fontSize: 20, fontWeight: 'bold' }}>{deliveredPortionsThisMonth}</div>
+                </div>
+                <div style={{ color: '#dc2626' }}>
+                  <div style={{ fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>Проблемни / Пропуснати</div>
+                  <div style={{ fontSize: 20, fontWeight: 'bold' }}>{issuesCount}</div>
+                </div>
+              </div>
+            </div>
 
-            {/* Simplified Table - Only Date, Status, Portions */}
             <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 14, fontSize: 12 }}>
               <thead>
                 <tr>
@@ -470,18 +448,15 @@ export default function UserProfileModal({
               <tbody>
                 {currentMonthData.map((d, idx) => {
                   const isIssue = isDeliveryIssue(d);
-                  const rowBackground = isIssue ? '#fef2f2' : 'transparent';
-                  const portionCount = getPrintPortionCount(d);
+                  const portionCount = getPrintPortionCount(d); // Използваме коригираната функция
                   const statusText = isIssue ? '* ПРОБЛЕМ' : 'ДОСТАВЕНО';
                   
                   return (
-                    <tr key={d.id || `print-${idx}`} style={{ background: rowBackground }}>
-                      <td style={{ border: '1px solid #e2e8f0', padding: 10 }}>
-                        {d.date}
-                      </td>
+                    <tr key={d.id || `print-${idx}`} style={{ background: isIssue ? '#fef2f2' : 'transparent' }}>
+                      <td style={{ border: '1px solid #e2e8f0', padding: 10 }}>{d.date}</td>
                       <td style={{ 
                         border: '1px solid #e2e8f0', 
-                        padding: 10,
+                        padding: 10, 
                         textAlign: 'center',
                         color: isIssue ? '#dc2626' : '#059669', 
                         fontWeight: 'bold'
@@ -490,7 +465,7 @@ export default function UserProfileModal({
                       </td>
                       <td style={{ 
                         border: '1px solid #e2e8f0', 
-                        padding: 10,
+                        padding: 10, 
                         textAlign: 'center',
                         color: isIssue ? '#dc2626' : 'inherit',
                         fontWeight: isIssue ? 'bold' : 'normal'
@@ -501,40 +476,23 @@ export default function UserProfileModal({
                   );
                 })}
               </tbody>
-              {/* Total Row */}
               <tfoot>
                 <tr style={{ background: '#f1f5f9' }}>
                   <td style={{ border: '1px solid #e2e8f0', padding: 10, fontWeight: 'bold' }} colSpan={2}>
                     ОБЩО ДОСТАВЕНИ ПОРЦИИ:
                   </td>
-                  <td style={{ 
-                    border: '1px solid #e2e8f0', 
-                    padding: 10, 
-                    textAlign: 'center',
-                    fontWeight: 'bold',
-                    color: '#059669',
-                    fontSize: 14
-                  }}>
+                  <td style={{ border: '1px solid #e2e8f0', padding: 10, textAlign: 'center', fontWeight: 'bold', color: '#059669', fontSize: 14 }}>
                     {deliveredPortionsThisMonth}
                   </td>
                 </tr>
               </tfoot>
             </table>
 
-            {/* Footer note for issues */}
             {issuesCount > 0 && (
               <div style={{ marginTop: 12, fontSize: 10, color: '#64748b' }}>
-                * Редовете маркирани с ПРОБЛЕМ не са включени в общия брой доставени порции.
+                * Редовете маркирани с ПРОБЛЕМ показват планираното количество, но не са включени в общата сума.
               </div>
             )}
-
-            {/* Signature line */}
-            <div style={{ marginTop: 32, fontSize: 12, display: 'flex', justifyContent: 'space-between' }}>
-              <div>
-              </div>
-              <div>
-              </div>
-            </div>
           </div>
         </div>
       </div>

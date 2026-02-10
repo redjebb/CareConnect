@@ -1045,7 +1045,9 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
                 <span className="text-2xl font-bold text-emerald-400">{actualDeliveredTodayCount}</span>
               </div>
               <div className="flex items-center justify-between py-1">
-                <span className="text-sm font-medium text-amber-300">С проблем:</span>
+                <span className="text-sm font-medium text-amber-300">
+                  {issueTodayCount === 1 ? 'С проблем:' : 'С проблеми:'}
+                </span>
                 <span className={`text-2xl font-bold ${issueTodayCount > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
                   {issueTodayCount}
                 </span>
@@ -1126,8 +1128,11 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
 
             {shiftSummary.issueCount > 0 && (
               <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-                ⚠️ Докладвани са {shiftSummary.issueCount} проблема по време на смяната.
-              </div>
+                ⚠️ {shiftSummary.issueCount === 1 
+                ? `Докладван е ${shiftSummary.issueCount} проблем по време на смяната.` 
+                : `Докладвани са ${shiftSummary.issueCount} проблема по време на смяната.`
+          }
+                </div>
             )}
 
             {shiftSummary.pendingCount > 0 && (
