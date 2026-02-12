@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ClientHistoryEntry, ClientRegistryEntry } from '../types';
 import { getClientMonthlyReport } from '../services/reportService';
+import { X, User, MapPin, Phone, Calendar, Printer, PlusCircle, AlertCircle, Clock, ChevronRight } from 'lucide-react';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -9,6 +10,7 @@ interface UserProfileModalProps {
   isLoading: boolean;
   errorMessage: string | null;
   onClose: () => void;
+  onQuickSchedule?: (entry: ClientRegistryEntry) => void; 
 }
 
 type MonthlyDeliveryData = {
@@ -26,45 +28,11 @@ type MonthlyDeliveryData = {
 
 const getSafeDate = (val: any): Date | null => {
   if (!val) return null;
-  if (typeof val.toDate === 'function') return val.toDate(); // Firebase Timestamp
-  if (typeof val.seconds === 'number') return new Date(val.seconds * 1000); // Serialized Timestamp
+  if (typeof val.toDate === 'function') return val.toDate();
+  if (typeof val.seconds === 'number') return new Date(val.seconds * 1000);
   const parsed = new Date(val);
   return isNaN(parsed.getTime()) ? null : parsed;
 };
-
-const extractHistoryDate = (entry: ClientHistoryEntry): Date | null => {
-  const serviceDate = entry?.serviceDate?.trim();
-  if (serviceDate) {
-    const parsed = new Date(serviceDate);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
-
-  const createdAt = (entry as any)?.createdAt?.trim();
-  if (createdAt) {
-    const parsed = new Date(createdAt);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
-
-  return null;
-};
-
-const formatHistoryDate = (entry: ClientHistoryEntry) => {
-  const date = extractHistoryDate(entry);
-  if (!date) return '—';
-
-  return date.toLocaleString('bg-BG', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-};
-
-const getSignatureUrl = (entry: ClientHistoryEntry) =>
-  entry?.clientSignature ?? entry?.driverSignature ?? null;
-
-const isDelivered = (entry: ClientHistoryEntry) => Boolean(getSignatureUrl(entry));
 
 const monthInputValueFromDate = (date: Date) => {
   const y = date.getFullYear();
@@ -80,52 +48,31 @@ const dateFromMonthInputValue = (value: string) => {
   return new Date(y, m - 1, 1);
 };
 
-const isSameMonth = (date: Date, monthDate: Date) =>
-  date.getFullYear() === monthDate.getFullYear() && date.getMonth() === monthDate.getMonth();
-
-const sumMealCountFromHistory = (items: ClientHistoryEntry[]) => {
-  return items.reduce((sum, item) => {
-    const n = Number((item as any)?.mealCount);
-    return sum + (Number.isFinite(n) ? n : 0);
-  }, 0);
-};
-
 export default function UserProfileModal({
   isOpen,
   entry,
-  history = [],
   isLoading,
   errorMessage,
-  onClose
+  onClose,
+  onQuickSchedule
 }: UserProfileModalProps) {
-  // Guard
-  if (!isOpen || !entry) return null;
-
-  // State
   const [reportDate, setReportDate] = useState(new Date());
   const [currentMonthData, setCurrentMonthData] = useState<MonthlyDeliveryData[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
 
-  // Auto-fetch deliveries when month or EGN changes
   useEffect(() => {
     const egn = entry?.egn?.trim();
     if (!egn) {
       setCurrentMonthData([]);
       return;
     }
-
     let isCancelled = false;
-
     const fetchDeliveries = async () => {
       setReportLoading(true);
       try {
         const data = await getClientMonthlyReport(egn, reportDate);
-        
         if (isCancelled) return;
-
         const deliveriesRaw = (data as any)?.deliveries || [];
-
-        // Map results into clean format with proper status fields
         const normalized: MonthlyDeliveryData[] = deliveriesRaw.map((row: any, index: number) => {
           const d = getSafeDate(row?.timestamp);
           return {
@@ -141,360 +88,227 @@ export default function UserProfileModal({
             issueDescription: row?.issueDescription || ''
           };
         });
-
         setCurrentMonthData(normalized);
       } catch (err) {
-        console.error('Error fetching monthly deliveries:', err);
-        if (!isCancelled) {
-          setCurrentMonthData([]);
-        }
+        if (!isCancelled) setCurrentMonthData([]);
       } finally {
-        if (!isCancelled) {
-          setReportLoading(false);
-        }
+        if (!isCancelled) setReportLoading(false);
       }
     };
-
     void fetchDeliveries();
-
-    return () => {
-      isCancelled = true;
-    };
+    return () => { isCancelled = true; };
   }, [reportDate, entry?.egn]);
 
-  // Helper function to determine delivery status with priority
-  const getDeliveryStatus = (item: MonthlyDeliveryData): { 
-    type: 'issue' | 'success' | 'pending'; 
-    label: string; 
-    className: string;
-    emoji: string;
-  } => {
-    if (item.status === 'issue' || item.hasIssue === true) {
-      return {
-        type: 'issue',
-        label: 'ПРОБЛЕМ',
-        className: 'bg-red-100 text-red-700 ring-1 ring-red-200',
-        emoji: '🔴'
-      };
-    }
-    
-    if (item.status === 'success' || item.completed === true) {
-      return {
-        type: 'success',
-        label: 'ДОСТАВЕНО',
-        className: 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200',
-        emoji: '✅'
-      };
-    }
-    
-    return {
-      type: 'pending',
-      label: 'ПРЕДСТОИ',
-      className: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
-      emoji: '⏳'
-    };
-  };
-
   const reportPeriodLabel = useMemo(() => {
-    try {
-      return reportDate.toLocaleDateString('bg-BG', { month: 'long', year: 'numeric' });
-    } catch {
-      return '';
-    }
+    return reportDate.toLocaleDateString('bg-BG', { month: 'long', year: 'numeric' });
   }, [reportDate]);
 
-  const successfulDeliveriesCount = useMemo(() => {
-    return currentMonthData.filter(item => {
-      const isIssue = item.status === 'issue' || item.hasIssue === true;
-      const isSuccess = item.status === 'success' || item.completed === true;
-      return isSuccess && !isIssue;
-    }).length;
-  }, [currentMonthData]);
+  const successfulDeliveriesCount = currentMonthData.filter(item => (item.status === 'success' || item.completed === true) && !item.hasIssue).length;
+  const issuesCount = currentMonthData.filter(item => item.status === 'issue' || item.hasIssue === true).length;
+  const deliveredPortionsThisMonth = currentMonthData
+    .filter(item => (item.status === 'success' || item.completed === true) && !item.hasIssue)
+    .reduce((sum, item) => sum + (Number(item?.mealCount) || 1), 0);
 
-  const issuesCount = useMemo(() => {
-    return currentMonthData.filter(item => 
-      item.status === 'issue' || item.hasIssue === true
-    ).length;
-  }, [currentMonthData]);
-
-  const deliveredPortionsThisMonth = useMemo(() => {
-    if (currentMonthData.length === 0) return 0;
-    
-    return currentMonthData
-      .filter(item => {
-        const isIssue = item.status === 'issue' || item.hasIssue === true;
-        const isSuccess = item.status === 'success' || item.completed === true;
-        return isSuccess && !isIssue;
-      })
-      .reduce((sum, item) => {
-        const n = Number(item?.mealCount);
-        return sum + (Number.isFinite(n) && n > 0 ? n : 1);
-      }, 0);
-  }, [currentMonthData]);
-
-  const isDeliveryIssue = (item: MonthlyDeliveryData): boolean => {
-    return item.status === 'issue' || item.hasIssue === true;
-  };
-
-  // ФУНКЦИЯТА Е КОРЕГИРАНА: Сега връща реалния брой за печат
-  const getPrintPortionCount = (item: MonthlyDeliveryData): number => {
-    return Number(item.mealCount) || 1;
-  };
-
-  const handleGenerateReport = async () => {
-    if (currentMonthData.length === 0) {
-      alert('Няма данни за избрания период');
-      return;
-    }
-
-    setTimeout(() => {
-      window.print();
-    }, 500);
-  };
+  if (!isOpen || !entry) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-4xl rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+      <div className="w-full max-w-4xl bg-white rounded-[2.5rem] shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in zoom-in-95">
+        
+        {/* НОВИЯТ ОЛЕКОТЕН CSS ЗА ПЕЧАТ */}
         <style>{`
-          @media screen {
-            #printable-report { display: none; }
+          @media screen { 
+            #printable-report { display: none !important; } 
           }
           @media print {
-            body * { visibility: hidden; }
-            #printable-report, #printable-report * { visibility: visible; }
-            #printable-report { display: block; position: absolute; left: 0; top: 0; width: 100%; padding: 24px; }
+            /* 1. Правим всичко на страницата невидимо */
+            body * { 
+              visibility: hidden !important; 
+            }
+            
+            /* 2. Показваме САМО отчета и неговите деца */
+            #printable-report, #printable-report * { 
+              visibility: visible !important; 
+            }
+            
+            /* 3. Форсираме отчета да застане най-горе на листа */
+            #printable-report { 
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 100% !important;
+              display: block !important;
+            }
+
+            @page {
+              size: A4;
+              margin: 10mm;
+            }
           }
         `}</style>
 
-        {/* Header */}
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-6 py-5">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900">{entry?.name ?? 'Профил'}</h2>
-            <p className="text-sm text-slate-500">ЕГН: {entry?.egn ?? '—'}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Затвори
-          </button>
-        </div>
-
-        {/* Statistics Cards */}
-        <div className="px-6 pt-6 grid gap-4 sm:grid-cols-3">
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-            <div className="text-xs font-semibold text-emerald-800">Успешни доставки</div>
-            <div className="mt-2 text-3xl font-bold text-emerald-700">{successfulDeliveriesCount}</div>
-          </div>
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-            <div className="text-xs font-semibold text-blue-800">Общо порции</div>
-            <div className="mt-2 text-3xl font-bold text-blue-700">{deliveredPortionsThisMonth}</div>
-            <div className="mt-1 text-xs text-blue-600">Период: {reportPeriodLabel}</div>
-          </div>
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-            <div className="text-xs font-semibold text-red-800">Проблеми</div>
-            <div className="mt-2 text-3xl font-bold text-red-700">{issuesCount}</div>
-          </div>
-        </div>
-
-        {/* History Section */}
-        <div className="px-6 py-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-700">История на доставките</h3>
-            {reportLoading ? <span className="text-xs text-slate-500">Зареждане...</span> : null}
-          </div>
-
-          {errorMessage ? (
-            <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{errorMessage}</p>
-          ) : null}
-
-          {reportLoading ? (
-            <p className="mt-4 text-sm text-slate-500">Зареждане на история...</p>
-          ) : currentMonthData.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-500">Няма намерена история за този клиент за избрания месец.</p>
-          ) : (
-            <div className="mt-4 space-y-3">
-              {currentMonthData.map((item, index) => {
-                const deliveryStatus = getDeliveryStatus(item);
-                const isIssue = deliveryStatus.type === 'issue';
-                
-                return (
-                  <div 
-                    key={item.id || `row-${index}`}
-                    className={`rounded-lg border p-4 ${
-                      isIssue 
-                        ? 'border-red-200 bg-red-50/50' 
-                        : 'border-slate-200 bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-medium text-slate-700">
-                          {item.date}
-                        </span>
-                        <span className="text-sm text-slate-500">
-                          {item.time}
-                        </span>
-                      </div>
-                      
-                      <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${deliveryStatus.className}`}>
-                        <span>{deliveryStatus.emoji}</span>
-                        {deliveryStatus.label}
-                      </span>
-                    </div>
-
-                    {/* Meal info - Сега се показва за всички, включително проблеми */}
-                    {item.mealType && item.mealType !== '—' && (
-                      <div className="mt-2 text-sm text-slate-600">
-                        {item.mealCount}× {item.mealType}
-                      </div>
-                    )}
-
-                    {/* Issue details */}
-                    {isIssue && (item.issueType || item.issueDescription) && (
-                      <div className="mt-2 rounded-md bg-red-100/50 p-2">
-                        {item.issueType && (
-                          <p className="text-xs font-semibold text-red-700">
-                            Тип: {item.issueType}
-                          </p>
-                        )}
-                        {item.issueDescription && (
-                          <p className="mt-1 text-xs text-red-600">
-                            {item.issueDescription}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+        {/* HEADER */}
+        <header className="flex items-center justify-between px-8 py-6 border-b border-slate-50 shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="h-14 w-14 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+              <User className="w-7 h-7" />
             </div>
-          )}
-        </div>
+            <div>
+              <h2 className="text-xl font-black text-slate-900 leading-tight">{entry.name}</h2>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">ЕГН: {entry.egn}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 transition-colors">
+            <X className="w-6 h-6 text-slate-400" />
+          </button>
+        </header>
 
-        {/* Report Section */}
-        <div className="px-6 pb-6">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        {/* CONTENT */}
+        <div className="flex-1 overflow-y-auto p-8 space-y-8">
+          
+          <div 
+            onClick={() => onQuickSchedule?.(entry)}
+            className="group cursor-pointer bg-white rounded-[2rem] p-5 border-2 border-blue-500/20 hover:border-blue-500 flex items-center justify-between transition-all shadow-sm hover:shadow-md"
+          >
+            <div className="flex items-center gap-4">
+              <div className="h-10 w-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
+                <PlusCircle className="w-5 h-5" />
+              </div>
               <div>
-                <div className="text-sm font-semibold text-slate-800">Месечен отчет</div>
-                <div className="mt-1 text-xs text-slate-500">Изберете месец и генерирайте отчет за печат.</div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Бързо действие</p>
+                <p className="text-sm font-bold text-slate-700">Добави клиента в днешния график</p>
+              </div>
+            </div>
+            <div className="h-8 w-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-all">
+              <ChevronRight className="w-4 h-4" />
+            </div>
+          </div>
+
+          <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-emerald-50/50 rounded-3xl p-5 border border-emerald-100/50">
+               <p className="text-[10px] font-black uppercase text-emerald-600 tracking-widest">Успешни</p>
+               <p className="text-3xl font-black text-emerald-700 mt-1">{successfulDeliveriesCount}</p>
+            </div>
+            <div className="bg-blue-50/50 rounded-3xl p-5 border border-blue-100/50">
+               <p className="text-[10px] font-black uppercase text-blue-600 tracking-widest">Порции за месеца</p>
+               <p className="text-3xl font-black text-blue-700 mt-1">{deliveredPortionsThisMonth}</p>
+            </div>
+            <div className="bg-red-50/50 rounded-3xl p-5 border border-red-100/50">
+               <p className="text-[10px] font-black uppercase text-red-600 tracking-widest">Проблеми</p>
+               <p className="text-3xl font-black text-red-700 mt-1">{issuesCount}</p>
+            </div>
+          </section>
+
+          <div className="grid lg:grid-cols-[300px_1fr] gap-8">
+            <aside className="space-y-6">
+              <div className="space-y-4">
+                 <div className="p-4 bg-slate-50 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 flex items-center gap-2"><MapPin className="w-3 h-3"/> Адрес</p>
+                    <p className="text-xs font-bold text-slate-600 leading-relaxed">{entry.address}</p>
+                 </div>
+                 <div className="p-4 bg-slate-50 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 flex items-center gap-2"><Phone className="w-3 h-3"/> Телефон</p>
+                    <p className="text-xs font-bold text-slate-600">{entry.phone || '—'}</p>
+                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <label className="text-xs font-semibold text-slate-600">
-                  Месец
-                  <input
-                    type="month"
-                    value={monthInputValueFromDate(reportDate)}
-                    onChange={e => {
-                      const raw = e.target.value;
-                      setReportDate(raw ? dateFromMonthInputValue(raw) : new Date());
-                    }}
-                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  onClick={() => void handleGenerateReport()}
-                  disabled={reportLoading}
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-500 disabled:opacity-60"
+              <div className="p-6 bg-white border-2 border-slate-100 rounded-[2rem] space-y-4">
+                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest text-center">Генериране на отчет</p>
+                <input
+                  type="month"
+                  value={monthInputValueFromDate(reportDate)}
+                  onChange={e => setReportDate(e.target.value ? dateFromMonthInputValue(e.target.value) : new Date())}
+                  className="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-100"
+                />
+                <button 
+                  onClick={() => window.print()}
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white py-3.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all"
                 >
-                  {reportLoading ? 'Зареждане...' : 'Генерирай месечен отчет'}
+                  <Printer className="w-4 h-4" /> Печат на отчет
                 </button>
               </div>
-            </div>
-          </div>
+            </aside>
 
-          {/* Printable Report Content */}
-          <div id="printable-report">
-            <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 0.5 }}>
-              МЕСЕЧЕН ОТЧЕТ ЗА ДОСТАВКА НА ХРАНА
-            </div>
-            <div style={{ marginTop: 6, fontSize: 12, color: '#475569' }}>
-              CareConnect • Период: {reportPeriodLabel}
-            </div>
-
-            <div style={{ marginTop: 14, fontSize: 12 }}>
-              <div><strong>Клиент:</strong> {entry?.name ?? ''}</div>
-              <div><strong>ЕГН:</strong> {entry?.egn ?? ''}</div>
-              <div><strong>Адрес:</strong> {entry?.address ?? ''}</div>
-              <div><strong>Месец:</strong> {reportPeriodLabel}</div>
-            </div>
-
-            <div style={{ marginTop: 16, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                <div style={{ color: '#059669' }}>
-                  <div style={{ fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>Успешно доставени порции</div>
-                  <div style={{ fontSize: 20, fontWeight: 'bold' }}>{deliveredPortionsThisMonth}</div>
-                </div>
-                <div style={{ color: '#dc2626' }}>
-                  <div style={{ fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>Проблемни / Пропуснати</div>
-                  <div style={{ fontSize: 20, fontWeight: 'bold' }}>{issuesCount}</div>
-                </div>
+            <section className="space-y-4">
+              <div className="flex items-center justify-between px-2">
+                <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">История на доставките</h3>
+                {reportLoading && <Clock className="w-4 h-4 text-blue-500 animate-spin" />}
               </div>
-            </div>
 
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 14, fontSize: 12 }}>
-              <thead>
-                <tr>
-                  <th style={{ border: '1px solid #e2e8f0', padding: 10, background: '#f8fafc', textAlign: 'left', width: '40%' }}>Дата</th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: 10, background: '#f8fafc', textAlign: 'center', width: '35%' }}>Статус</th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: 10, background: '#f8fafc', textAlign: 'center', width: '25%' }}>Брой порции</th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentMonthData.map((d, idx) => {
-                  const isIssue = isDeliveryIssue(d);
-                  const portionCount = getPrintPortionCount(d); // Използваме коригираната функция
-                  const statusText = isIssue ? '* ПРОБЛЕМ' : 'ДОСТАВЕНО';
-                  
-                  return (
-                    <tr key={d.id || `print-${idx}`} style={{ background: isIssue ? '#fef2f2' : 'transparent' }}>
-                      <td style={{ border: '1px solid #e2e8f0', padding: 10 }}>{d.date}</td>
-                      <td style={{ 
-                        border: '1px solid #e2e8f0', 
-                        padding: 10, 
-                        textAlign: 'center',
-                        color: isIssue ? '#dc2626' : '#059669', 
-                        fontWeight: 'bold'
-                      }}>
-                        {statusText}
-                      </td>
-                      <td style={{ 
-                        border: '1px solid #e2e8f0', 
-                        padding: 10, 
-                        textAlign: 'center',
-                        color: isIssue ? '#dc2626' : 'inherit',
-                        fontWeight: isIssue ? 'bold' : 'normal'
-                      }}>
-                        {portionCount}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: '#f1f5f9' }}>
-                  <td style={{ border: '1px solid #e2e8f0', padding: 10, fontWeight: 'bold' }} colSpan={2}>
-                    ОБЩО ДОСТАВЕНИ ПОРЦИИ:
-                  </td>
-                  <td style={{ border: '1px solid #e2e8f0', padding: 10, textAlign: 'center', fontWeight: 'bold', color: '#059669', fontSize: 14 }}>
-                    {deliveredPortionsThisMonth}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-
-            {issuesCount > 0 && (
-              <div style={{ marginTop: 12, fontSize: 10, color: '#64748b' }}>
-                * Редовете маркирани с ПРОБЛЕМ показват планираното количество, но не са включени в общата сума.
+              <div className="space-y-3">
+                {currentMonthData.length === 0 ? (
+                  <div className="py-12 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-100">
+                    <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">Няма записи за периода</p>
+                  </div>
+                ) : (
+                  currentMonthData.map((item, index) => {
+                    const isIssue = item.status === 'issue' || item.hasIssue;
+                    return (
+                      <div key={item.id || index} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${isIssue ? 'bg-red-50/30 border-red-100' : 'bg-white border-slate-100'}`}>
+                        <div className="flex items-center gap-4">
+                          <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${isIssue ? 'bg-red-100 text-red-600' : 'bg-slate-50 text-slate-400'}`}>
+                            {isIssue ? <AlertCircle className="w-5 h-5" /> : <Calendar className="w-5 h-5" />}
+                          </div>
+                          <div>
+                            <p className="text-xs font-black text-slate-900">{item.date} <span className="opacity-30 ml-1 font-bold">{item.time}</span></p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{item.mealCount}× {item.mealType}</p>
+                          </div>
+                        </div>
+                        <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${isIssue ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                          {isIssue ? 'Проблем' : 'Доставено'}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
               </div>
-            )}
+            </section>
           </div>
         </div>
+
+        {/* ПЕЧАТЕН ОТЧЕТ - ТУК НЕ ПИПАМЕ НИЩО ВЪТРЕ */}
+        <div id="printable-report">
+          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 0.5 }}>МЕСЕЧЕН ОТЧЕТ ЗА ДОСТАВКА НА ХРАНА</div>
+          <div style={{ marginTop: 6, fontSize: 12, color: '#475569' }}>CareConnect • Период: {reportPeriodLabel}</div>
+          <div style={{ marginTop: 14, fontSize: 12 }}>
+            <div><strong>Клиент:</strong> {entry?.name}</div>
+            <div><strong>ЕГН:</strong> {entry?.egn}</div>
+            <div><strong>Адрес:</strong> {entry?.address}</div>
+          </div>
+          <div style={{ marginTop: 16, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div style={{ color: '#059669' }}>
+                <div style={{ fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>Успешни порции</div>
+                <div style={{ fontSize: 20, fontWeight: 'bold' }}>{deliveredPortionsThisMonth}</div>
+              </div>
+              <div style={{ color: '#dc2626' }}>
+                <div style={{ fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>Проблеми</div>
+                <div style={{ fontSize: 20, fontWeight: 'bold' }}>{issuesCount}</div>
+              </div>
+            </div>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 14, fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th style={{ border: '1px solid #e2e8f0', padding: 10, background: '#f8fafc', textAlign: 'left' }}>Дата</th>
+                <th style={{ border: '1px solid #e2e8f0', padding: 10, background: '#f8fafc', textAlign: 'center' }}>Статус</th>
+                <th style={{ border: '1px solid #e2e8f0', padding: 10, background: '#f8fafc', textAlign: 'center' }}>Брой</th>
+              </tr>
+            </thead>
+            <tbody>
+              {currentMonthData.map((d, idx) => (
+                <tr key={idx}>
+                  <td style={{ border: '1px solid #e2e8f0', padding: 10 }}>{d.date}</td>
+                  <td style={{ border: '1px solid #e2e8f0', padding: 10, textAlign: 'center', fontWeight: 'bold', color: (d.status==='issue'||d.hasIssue) ? '#dc2626' : '#059669' }}>
+                    {(d.status==='issue'||d.hasIssue) ? 'ПРОБЛЕМ' : 'ДОСТАВЕНО'}
+                  </td>
+                  <td style={{ border: '1px solid #e2e8f0', padding: 10, textAlign: 'center' }}>{d.mealCount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
       </div>
     </div>
   );

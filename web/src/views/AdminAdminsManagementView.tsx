@@ -1,41 +1,36 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
+import { UserPlus, Search, Mail, ShieldCheck, Trash2, UserCircle, CheckCircle2, Clock, Shield } from 'lucide-react';
 
 type AdminsListItem = { id: string; name: string; email: string };
 
 type AdminAdminsManagementViewProps = {
   admins: AdminsListItem[];
-  invitations: any[]; 
+  invitations: any[];
   adminsLoading: boolean;
   adminsError: string | null;
-
   adminSubmitting: boolean;
   adminDeletingId: string | null;
-
   adminForm: { name: string; email: string };
   onAdminInputChange: (field: 'name' | 'email', value: string) => void;
-
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onDeleteAdmin: (adminId: string) => void;
 };
 
-// Компонент за статус на мениджъра
 const AdminStatusBadge = ({ email, invitations }: { email: string; invitations: any[] }) => {
   const invite = invitations.find(i => i.email === email);
 
   if (!invite || invite.status === 'accepted') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-        Активен
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-600 ring-1 ring-emerald-200">
+        <CheckCircle2 className="h-3 w-3" /> Активен
       </span>
     );
   }
 
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
-      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-      Чака активация
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-600 ring-1 ring-amber-200">
+      <Clock className="h-3 w-3" /> Чака активация
     </span>
   );
 };
@@ -54,7 +49,6 @@ export default function AdminAdminsManagementView({
 }: AdminAdminsManagementViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Филтриране и сортиране на списъка (Кирилица)
   const filteredAdmins = admins
     .filter(admin =>
       admin.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -62,116 +56,137 @@ export default function AdminAdminsManagementView({
     )
     .sort((a, b) => a.name.localeCompare(b.name, 'bg'));
 
+  const inputClasses = "mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm text-slate-900 transition-all focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 placeholder:text-slate-400";
+  const labelClasses = "flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1";
+
   return (
-    <section className="grid gap-6 md:grid-cols-2">
+    <section className="grid gap-8 lg:grid-cols-[400px_1fr] items-start">
       {/* ФОРМА ЗА ДОБАВЯНЕ */}
-      <form onSubmit={onSubmit} className="rounded-2xl bg-white p-6 shadow h-fit">
-        <h2 className="text-xl font-semibold text-slate-900">Добави мениджър</h2>
-        <p className="mt-1 text-sm text-slate-500">Попълнете детайли за нов мениджър с достъп до панела.</p>
-
-        <div className="mt-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Име</label>
-            <input
-              type="text"
-              value={adminForm.name}
-              onChange={event => onAdminInputChange('name', event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              placeholder="Име и фамилия"
-              required
-            />
+      <aside className="lg:sticky lg:top-24">
+        <form onSubmit={onSubmit} className="overflow-hidden rounded-[2.5rem] bg-white border border-slate-100 shadow-xl shadow-slate-200/60">
+          <div className="bg-slate-50 p-6 border-b border-slate-100">
+            <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
+              <ShieldCheck className="w-5 h-5 text-blue-600" /> Добави мениджър
+            </h2>
+            <p className="mt-1 text-xs font-bold text-slate-500 uppercase tracking-tight">Административен достъп</p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Имейл</label>
-            <input
-              type="email"
-              value={adminForm.email}
-              onChange={event => onAdminInputChange('email', event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              placeholder="manager@careconnect.bg"
-              required
-            />
+          <div className="p-6 space-y-5">
+            <div>
+              <label className={labelClasses}><UserCircle className="w-3 h-3" /> Пълно име</label>
+              <input
+                type="text"
+                value={adminForm.name}
+                onChange={event => onAdminInputChange('name', event.target.value)}
+                className={inputClasses}
+                placeholder="Име и фамилия"
+                required
+              />
+            </div>
+
+            <div>
+              <label className={labelClasses}><Mail className="w-3 h-3" /> Имейл адрес</label>
+              <input
+                type="email"
+                value={adminForm.email}
+                onChange={event => onAdminInputChange('email', event.target.value)}
+                className={inputClasses}
+                placeholder="manager@careconnect.bg"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={adminSubmitting}
+              className="mt-4 w-full rounded-2xl bg-blue-600 py-4 text-sm font-black uppercase tracking-widest text-white shadow-lg shadow-blue-200 transition-all hover:bg-blue-700 active:scale-95 disabled:opacity-50"
+            >
+              {adminSubmitting ? 'Записване...' : 'Запази мениджър'}
+            </button>
+            
+            {adminsError && (
+              <p className="mt-2 text-center text-xs font-bold text-red-500 bg-red-50 py-2 rounded-xl border border-red-100">
+                {adminsError}
+              </p>
+            )}
           </div>
-        </div>
-
-        <button
-          type="submit"
-          disabled={adminSubmitting}
-          className="mt-6 w-full rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
-        >
-          {adminSubmitting ? 'Записване...' : 'Запази мениджър'}
-        </button>
-
-        {adminsError ? <p className="mt-3 text-sm text-red-600 font-medium">{adminsError}</p> : null}
-      </form>
+        </form>
+      </aside>
 
       {/* СПИСЪК С МЕНИДЖЪРИ */}
-      <div className="rounded-2xl bg-white p-6 shadow">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-50 pb-4">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-semibold text-slate-900">Списък с мениджъри</h2>
-            <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-600">
-              {filteredAdmins.length}
-            </span>
+      <main className="space-y-6">
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between px-2">
+          <div>
+            <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3">
+              Екип <span className="text-blue-600 bg-blue-50 px-3 py-1 rounded-2xl text-sm">{filteredAdmins.length}</span>
+            </h2>
+            <p className="text-sm font-medium text-slate-500">Мениджъри с право на управление</p>
           </div>
-          <input 
-            type="text"
-            placeholder="Търси мениджър..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full sm:w-48 rounded-xl bg-slate-50 border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
-          />
+          
+          <div className="relative group">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+            <input 
+              type="text"
+              placeholder="Търси мениджър..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full sm:w-72 rounded-2xl border border-slate-200 bg-white pl-11 pr-4 py-3 text-sm shadow-sm focus:ring-4 focus:ring-blue-500/10 transition-all outline-none"
+            />
+          </div>
         </div>
 
         {adminsLoading ? (
-          <p className="mt-6 text-sm text-slate-500 italic text-center">Зареждане на списъка...</p>
+          <div className="p-20 text-center animate-pulse text-slate-400 font-black uppercase text-xs tracking-widest">
+            Зареждане на списъка...
+          </div>
         ) : filteredAdmins.length === 0 ? (
-          <div className="mt-10 text-center">
-            <p className="text-sm text-slate-500 italic">
-              {searchTerm ? 'Няма намерени мениджъри.' : 'Няма добавени мениджъри.'}
-            </p>
+          <div className="rounded-[2.5rem] bg-slate-100/50 p-20 text-center border-2 border-dashed border-slate-200">
+            <Shield className="mx-auto h-10 w-10 text-slate-300 mb-4" />
+            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Няма добавени мениджъри</p>
           </div>
         ) : (
-          <div className="mt-6 overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead>
-                <tr className="text-left text-slate-500 uppercase text-[10px] tracking-wider">
-                  <th className="px-4 py-3 font-bold italic">Име</th>
-                  <th className="px-4 py-3 font-bold italic">Имейл</th>
-                  <th className="px-4 py-3 font-bold italic">Статус</th>
-                  <th className="px-4 py-3 font-bold italic text-right">Действие</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredAdmins.map(admin => (
-                  <tr key={admin.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-4 py-3 font-semibold text-slate-900">{admin.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{admin.email}</td>
-                    <td className="px-4 py-3">
-                      <AdminStatusBadge email={admin.email} invitations={invitations} />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm(`Сигурни ли сте, че искате да премахнете мениджър ${admin.name}?`)) {
-                            onDeleteAdmin(admin.id);
-                          }
-                        }}
-                        disabled={adminDeletingId === admin.id}
-                        className="rounded-md border border-red-200 px-3 py-1 text-xs font-bold text-red-600 hover:bg-red-600 hover:text-white transition-all disabled:opacity-60"
-                      >
-                        {adminDeletingId === admin.id ? '...' : 'Изтрий'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="grid gap-4 md:grid-cols-1 xl:grid-cols-2">
+            {filteredAdmins.map(admin => (
+              <div key={admin.id} className="group relative rounded-[2rem] bg-white p-6 border border-slate-100 shadow-sm hover:border-blue-200 hover:shadow-xl hover:shadow-blue-500/5 transition-all">
+                <div className="flex items-start justify-between">
+                  <div className="flex gap-4">
+                    <div className="h-14 w-14 rounded-2xl bg-blue-50 flex items-center justify-center text-2xl font-black text-blue-200 group-hover:text-blue-600 transition-colors">
+                      <ShieldCheck className="h-7 w-7" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-black text-slate-900 leading-tight">{admin.name}</h4>
+                      <div className="mt-1.5 flex items-center gap-2 text-xs font-bold text-slate-500">
+                        <Mail className="h-3.5 w-3.5" /> {admin.email}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <button 
+                    onClick={() => {
+                      if (window.confirm(`Сигурни ли сте, че искате да премахнете мениджър ${admin.name}?`)) {
+                        onDeleteAdmin(admin.id);
+                      }
+                    }}
+                    disabled={adminDeletingId === admin.id}
+                    className="p-2.5 text-slate-200 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="mt-6 flex items-center justify-between border-t border-slate-50 pt-5">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ниво на достъп</span>
+                    <p className="text-xs font-bold text-slate-700">Системен администратор</p>
+                  </div>
+                  
+                  <AdminStatusBadge email={admin.email} invitations={invitations} />
+                </div>
+              </div>
+            ))}
           </div>
         )}
-      </div>
+      </main>
     </section>
   );
 }

@@ -2,39 +2,26 @@ import type { ReactNode } from 'react';
 import type { Client, ClientRegistryEntry, Driver, ScheduleItem } from '../types';
 import ScheduleCalendar from '../scheduleCalendar';
 import ClientForm from '../components/ClientForm';
+import { Users, Utensils, Truck, AlertTriangle, Trash2, MapPin, Phone, ChevronRight, CheckCircle2, XCircle, UserCircle } from 'lucide-react';
 
 type ClientWithSchedule = Client & { nextVisitDate?: string | null };
 
 type AdminDailyListViewProps = {
-  // stats
   totalClientsToday: number;
   totalPortionsToday: number;
   remainingDeliveriesToday: number;
   activeSosCount: number;
-
-  // profile quick search (inside daily view)
-  profileSearch: string;
-  setProfileSearch: (value: string) => void;
-  isProfileSearchOpen: boolean;
-  setIsProfileSearchOpen: (value: boolean) => void;
-  profileSearchResults: ClientRegistryEntry[];
-  onSelectProfileSearch: (entry: ClientRegistryEntry) => void;
-
-  // calendar
   scheduleItems: ScheduleItem[];
   clients: ClientWithSchedule[];
   drivers: Driver[];
   selectedDate: Date;
   onDateChange: (date: Date) => void;
-
-  // client form
   registrySearch: string;
   selectedRegistryEntryId: string | null;
   registrySuggestions: ClientRegistryEntry[];
   onRegistrySearchChange: (value: string) => void;
   onRegistrySelect: (entry: ClientRegistryEntry) => void;
   onRegistryClear: () => void;
-
   clientForm: {
     egn: string;
     name: string;
@@ -47,21 +34,14 @@ type AdminDailyListViewProps = {
     mealCount: string;
   };
   onClientInputChange: (field: keyof AdminDailyListViewProps['clientForm'], value: string) => void;
-
   driversLoading: boolean;
   clientSubmitting: boolean;
   clientsError: string | null;
   onSubmitClient: (event: React.FormEvent<HTMLFormElement>) => void | Promise<void>;
   onAddForToday: () => void | Promise<void>;
-
-  // table + actions
   clientsLoading: boolean;
   clientDeletingId: string | null;
-  reportGenerating: boolean;
-  onGenerateMonthlyReport: () => void | Promise<void>;
   onDeleteClient: (clientId: string) => void | Promise<void>;
-
-  // helpers
   formatNextVisitDate: (value?: string | null) => string;
   renderLastCheckInStatus: (lastCheckIn: string | undefined) => ReactNode;
   onOpenSignaturePreview: (item: {
@@ -71,193 +51,93 @@ type AdminDailyListViewProps = {
     driverSignature?: string | null;
     lastCheckIn?: string | null;
   }) => void;
+  onViewProfile: (entry: ClientRegistryEntry) => void; // Добавено за отваряне на профил
 };
 
 export default function AdminDailyListView({
-  totalClientsToday,
-  totalPortionsToday,
-  remainingDeliveriesToday,
-  activeSosCount,
-
-  profileSearch,
-  setProfileSearch,
-  isProfileSearchOpen,
-  setIsProfileSearchOpen,
-  profileSearchResults,
-  onSelectProfileSearch,
-
-  scheduleItems,
-  clients,
-  drivers,
-  selectedDate,
-  onDateChange,
-
-  registrySearch,
-  selectedRegistryEntryId,
-  registrySuggestions,
-  onRegistrySearchChange,
-  onRegistrySelect,
-  onRegistryClear,
-
-  clientForm,
-  onClientInputChange,
-  driversLoading,
-  clientSubmitting,
-  clientsError,
-  onSubmitClient,
-  onAddForToday,
-
-  clientsLoading,
-  clientDeletingId,
-  reportGenerating,
-  onGenerateMonthlyReport,
-  onDeleteClient,
-
-  formatNextVisitDate,
-  renderLastCheckInStatus,
-  onOpenSignaturePreview
+  totalClientsToday, totalPortionsToday, remainingDeliveriesToday, activeSosCount,
+  scheduleItems, clients, drivers, selectedDate, onDateChange,
+  registrySearch, selectedRegistryEntryId, registrySuggestions,
+  onRegistrySearchChange, onRegistrySelect, onRegistryClear,
+  clientForm, onClientInputChange, driversLoading, clientSubmitting, clientsError,
+  onSubmitClient, onAddForToday,
+  clientsLoading, clientDeletingId, onDeleteClient,
+  renderLastCheckInStatus, onOpenSignaturePreview,
+  onViewProfile
 }: AdminDailyListViewProps) {
+
+  const getStatusBadge = (lastCheckIn: string | undefined) => {
+    if (!lastCheckIn) return null;
+    const normalized = lastCheckIn.toUpperCase();
+    
+    if (normalized.includes('INCIDENT') || normalized.includes('SOS')) {
+      return (
+        <div className="flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-red-600 ring-1 ring-red-200">
+          <XCircle className="h-3.5 w-3.5" /> Проблем
+        </div>
+      );
+    }
+    
+    if (normalized.includes('ДОСТАВЕНО')) {
+      return (
+        <div className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-emerald-600 ring-1 ring-emerald-200">
+          <CheckCircle2 className="h-3.5 w-3.5" /> Доставено
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const handleCardClick = (client: ClientWithSchedule) => {
+  if (client.egn && onViewProfile) {
+    const registryEntry: ClientRegistryEntry = {
+      id: (client as any).clientId || client.id,
+      name: client.name,
+      egn: client.egn,
+      address: client.address,
+      phone: client.phone || '',
+      defaultMealType: (client as any).mealType || '',
+      defaultMealCount: Number((client as any).mealCount) || 1 
+    };
+    onViewProfile(registryEntry);
+  }
+};
+
   return (
-    <section className="space-y-6">
-      {/* Stats + quick profile search */}
-      <section className="grid gap-4 lg:grid-cols-[1fr_320px]">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl bg-white p-5 shadow">
+    <div className="space-y-8 animate-in fade-in duration-500">
+      
+      {/* 1. СТАТИСТИКА */}
+      <section className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        {[
+          { label: 'Клиенти', val: totalClientsToday, icon: <Users />, color: 'text-blue-500', bg: 'bg-blue-50/50', border: 'border-blue-100' },
+          { label: 'Порции', val: totalPortionsToday, icon: <Utensils />, color: 'text-amber-500', bg: 'bg-amber-50/50', border: 'border-amber-100' },
+          { label: 'Остават', val: remainingDeliveriesToday, icon: <Truck />, color: 'text-emerald-500', bg: 'bg-emerald-50/50', border: 'border-emerald-100' },
+          { label: 'SOS Сигнали', val: activeSosCount, icon: <AlertTriangle />, color: 'text-red-500', bg: 'bg-red-50/50', border: 'border-red-100', pulse: activeSosCount > 0 },
+        ].map((s, i) => (
+          <div key={i} className={`rounded-[2rem] bg-white p-5 border ${s.border} shadow-sm transition-all hover:shadow-md`}>
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-600">Общо клиенти</p>
-                <p className="mt-2 text-3xl font-bold text-slate-900">{totalClientsToday}</p>
-              </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 ring-1 ring-blue-100">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 11a4 4 0 100-8 4 4 0 000 8z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M23 21v-2a4 4 0 00-3-3.87" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 3.13a4 4 0 010 7.75" />
-                </svg>
-              </div>
+              <div className={`p-2 rounded-xl ${s.bg} ${s.color} ${s.pulse ? 'animate-pulse' : ''}`}>{s.icon}</div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Днес</span>
             </div>
-            <p className="mt-3 text-xs text-slate-500">За днес (по график)</p>
+            <p className="mt-4 text-3xl font-black text-slate-900">{s.val}</p>
+            <p className="text-xs font-bold text-slate-500 mt-0.5">{s.label}</p>
           </div>
-
-          <div className="rounded-2xl bg-white p-5 shadow">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-600">Общо порции храна</p>
-                <p className="mt-2 text-3xl font-bold text-slate-900">{totalPortionsToday}</p>
-              </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 ring-1 ring-amber-100">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 2v20" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 11h2a3 3 0 003-3V2" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 2v6a3 3 0 003 3h2V2" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 2v20" />
-                </svg>
-              </div>
-            </div>
-            <p className="mt-3 text-xs text-slate-500">Сума от порциите за днес</p>
-          </div>
-
-          <div className="rounded-2xl bg-white p-5 shadow">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-600">Остават за доставка</p>
-                <p className="mt-2 text-3xl font-bold text-slate-900">{remainingDeliveriesToday}</p>
-              </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h13v10H3z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 10h4l1 2v5h-5" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 17a2 2 0 104 0" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 17a2 2 0 104 0" />
-                </svg>
-              </div>
-            </div>
-            <p className="mt-3 text-xs text-slate-500">Без отчет или подпис</p>
-          </div>
-
-          <div className="rounded-2xl bg-white p-5 shadow">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-600">Активни SOS сигнали</p>
-                <p className="mt-2 text-3xl font-bold text-slate-900">{activeSosCount}</p>
-              </div>
-              <div
-                className={`flex h-12 w-12 items-center justify-center rounded-2xl ring-1 ${
-                  activeSosCount > 0
-                    ? 'bg-red-50 text-red-600 ring-red-100 animate-pulse'
-                    : 'bg-red-50 text-red-600 ring-red-100'
-                }`}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 17h.01" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                </svg>
-              </div>
-            </div>
-            <p className="mt-3 text-xs text-slate-500">Ескалирани / SOS (незатворени)</p>
-          </div>
-        </div>
-
-        <div className="rounded-2xl bg-white p-5 shadow">
-          <label className="text-sm font-semibold text-slate-700">
-            Бързо търсене на профил (Име или ЕГН)
-          </label>
-          <div className="relative mt-3">
-            <input
-              type="text"
-              value={profileSearch}
-              onChange={event => {
-                setProfileSearch(event.target.value);
-                setIsProfileSearchOpen(true);
-              }}
-              onFocus={() => setIsProfileSearchOpen(true)}
-              onBlur={() => {
-                window.setTimeout(() => setIsProfileSearchOpen(false), 150);
-              }}
-              className="w-full rounded-lg border border-slate-200 px-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              placeholder="Например: Мария Иванова или 1234567890"
-            />
-
-            {isProfileSearchOpen && profileSearchResults.length > 0 ? (
-              <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-                {profileSearchResults.map(entry => (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    onMouseDown={event => event.preventDefault()}
-                    onClick={() => onSelectProfileSearch(entry)}
-                    className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left text-sm hover:bg-slate-50"
-                  >
-                    <span className="font-medium text-slate-800">{entry.name}</span>
-                    <span className="text-xs text-slate-500">{entry.egn}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            {isProfileSearchOpen && profileSearch.trim() && profileSearchResults.length === 0 ? (
-              <div className="absolute z-20 mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-lg">
-                Няма намерени резултати.
-              </div>
-            ) : null}
-          </div>
-          <p className="mt-3 text-xs text-slate-500">Търсете по име или ЕГН от регистъра.</p>
-        </div>
+        ))}
       </section>
 
-      {/* Calendar + form + table */}
-      <section className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
-        <ScheduleCalendar
-          scheduleItems={scheduleItems}
-          clients={clients}
-          drivers={drivers}
-          selectedDate={selectedDate}
-          onDateChange={onDateChange}
-        />
+      {/* 2. РАБОТНА ПЛОЩ */}
+      <section className="grid gap-8 lg:grid-cols-[380px_1fr]">
+        <div className="rounded-[2.5rem] bg-white border border-slate-100 shadow-sm overflow-hidden h-fit lg:sticky lg:top-24">
+          <ScheduleCalendar
+            scheduleItems={scheduleItems}
+            clients={clients}
+            drivers={drivers}
+            selectedDate={selectedDate}
+            onDateChange={onDateChange}
+          />
+        </div>
 
-        <div className="space-y-6">
+        <div className="h-full">
           <ClientForm
             registrySearch={registrySearch}
             selectedRegistryEntryId={selectedRegistryEntryId}
@@ -274,106 +154,125 @@ export default function AdminDailyListView({
             onSubmit={onSubmitClient}
             onAddForToday={onAddForToday}
           />
-
-          <div className="rounded-2xl bg-white p-6 shadow">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-900">Списък с клиенти</h2>
-              <div className="flex items-center gap-3">
-                {clientsLoading ? <span className="text-sm text-slate-500">Зареждане...</span> : null}
-                <button
-                  type="button"
-                  onClick={() => void onGenerateMonthlyReport()}
-                  disabled={reportGenerating}
-                  className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-purple-500 disabled:opacity-60"
-                >
-                  {reportGenerating ? 'Генериране...' : 'Генерирай Месечен Отчет (HTML/PDF)'}
-                </button>
-              </div>
-            </div>
-
-            {clientsLoading ? (
-              <p className="mt-6 text-sm text-slate-500">Loading clients...</p>
-            ) : clients.length === 0 ? (
-              <p className="mt-6 text-sm text-slate-500">Няма налични клиенти.</p>
-            ) : (
-              <div className="mt-6 overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                  <thead>
-                    <tr className="text-left text-slate-500">
-                      <th className="px-4 py-2 font-medium">ЕГН</th>
-                      <th className="px-4 py-2 font-medium">Име</th>
-                      <th className="px-4 py-2 font-medium">Адрес</th>
-                      <th className="px-4 py-2 font-medium">Телефон</th>
-                      <th className="px-4 py-2 font-medium">Меню / Порции</th>
-                      <th className="px-4 py-2 font-medium">Бележки</th>
-                      <th className="px-4 py-2 font-medium">Дата на посещение</th>
-                      <th className="px-4 py-2 font-medium">Последен Отчет</th>
-                      <th className="px-4 py-2 font-medium text-right">Действие</th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-100">
-                    {clients.map(client => (
-                      <tr key={client.id}>
-                        <td className="px-4 py-3 text-slate-600">{client.egn ?? ''}</td>
-                        <td className="px-4 py-3 font-medium text-slate-900">{client.name}</td>
-                        <td className="px-4 py-3 text-slate-600">{client.address}</td>
-                        <td className="px-4 py-3 text-slate-600">{client.phone}</td>
-
-                        <td className="px-4 py-3 text-slate-600">
-                          <span className="inline-flex items-center gap-2 rounded-full bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-300">
-                            <span className="h-2 w-2 rounded-full bg-sky-400" aria-hidden="true" />
-                            {client.mealType && client.mealCount
-                              ? `${client.mealCount}× ${client.mealType}`
-                              : 'Не е зададено'}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3 text-slate-600">{client.notes}</td>
-                        <td className="px-4 py-3 text-slate-600">{formatNextVisitDate(client.nextVisitDate)}</td>
-
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            {renderLastCheckInStatus(client.lastCheckIn)}
-                            {(client.driverSignature || client.clientSignature || client.lastSignature) && (
-                              <button
-                                type="button"
-                                title="Виж подпис"
-                                onClick={() =>
-                                  onOpenSignaturePreview({
-                                    name: client.name,
-                                    clientSignature: client.clientSignature || client.lastSignature || null,
-                                    driverSignature: client.driverSignature || null,
-                                    lastCheckIn: client.lastCheckIn || null
-                                  })
-                                }
-                                className="inline-flex items-center rounded-md border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                              >
-                                ✍️ Подпис
-                              </button>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => void onDeleteClient(client.id)}
-                            disabled={clientDeletingId === client.id}
-                            className="rounded-md border border-red-200 px-3 py-1 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"
-                          >
-                            {clientDeletingId === client.id ? 'Изтриване...' : 'Изтрий'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
         </div>
       </section>
-    </section>
+
+      {/* 3. СПИСЪК С КЛИЕНТИ */}
+      <section className="space-y-6">
+        <div className="px-4">
+          <h3 className="text-xl font-black text-slate-900 leading-none">График за деня</h3>
+          <p className="text-xs font-bold text-blue-500 uppercase tracking-widest mt-2">
+            {selectedDate.toLocaleDateString('bg-BG', { day: '2-digit', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+
+        {clientsLoading ? (
+          <div className="py-20 text-center font-bold text-slate-400 animate-pulse uppercase text-xs tracking-widest">
+            Обновяване на списъка...
+          </div>
+        ) : clients.length === 0 ? (
+          <div className="rounded-[3rem] bg-slate-100/50 border-2 border-dashed border-slate-200 p-16 text-center">
+            <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">Няма планирани доставки за тази дата</p>
+          </div>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-1 xl:grid-cols-2">
+            {clients.map(client => (
+              <div 
+                key={client.id} 
+                onClick={() => handleCardClick(client)}
+                className={`group relative flex flex-col rounded-[2.5rem] bg-white p-6 border border-slate-100 shadow-sm transition-all hover:shadow-md ${client.egn ? 'cursor-pointer hover:border-blue-400' : ''}`}
+              >
+                
+                {/* Горна част на картата */}
+                <div className="flex items-start justify-between">
+                  <div className="flex gap-4">
+                    <div className="h-14 w-14 flex-shrink-0 rounded-[1.25rem] bg-slate-50 flex items-center justify-center text-xl font-black text-slate-300 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
+                      {client.name.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-lg font-black text-slate-900 tracking-tight leading-tight group-hover:text-blue-600 transition-colors">
+                          {client.name}
+                        </h4>
+                        {client.egn && <UserCircle className="w-4 h-4 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                      </div>
+                      <p className="text-xs font-bold text-slate-400 mt-1 flex items-center gap-2">
+                        <Phone className="w-3 h-3" /> {client.phone} • ЕГН: {client.egn || '---'}
+                      </p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void onDeleteClient(client.id);
+                    }}
+                    disabled={clientDeletingId === client.id}
+                    className="p-2 text-slate-200 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Адрес */}
+                <div className="mt-5 space-y-4">
+                  <div className="flex flex-col gap-1 rounded-2xl bg-slate-50/50 p-4 border border-slate-50">
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-1">
+                      <MapPin className="w-3 h-3" /> Адрес на доставка
+                    </span>
+                    <p className="text-xs font-bold text-slate-600 leading-relaxed">{client.address}</p>
+                  </div>
+
+                  {/* Статус и Детайли */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                    <div className="flex items-center gap-2">
+                      {getStatusBadge(client.lastCheckIn)}
+                      <span className="rounded-lg border border-slate-100 bg-white px-2.5 py-1 text-[10px] font-black uppercase text-slate-500">
+                        {client.mealCount}× {client.mealType}
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {(client.driverSignature || client.clientSignature || client.lastSignature) && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenSignaturePreview({
+                              name: client.name,
+                              clientSignature: client.clientSignature || client.lastSignature || null,
+                              driverSignature: client.driverSignature || null,
+                              lastCheckIn: client.lastCheckIn || null
+                            });
+                          }}
+                          className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-blue-600 transition-all shadow-sm"
+                        >
+                          Подпис <ChevronRight className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Текст на отчета */}
+                  {client.lastCheckIn && (
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/30 p-3 mt-2">
+                      <p className="text-[11px] font-medium text-slate-500 leading-relaxed italic">
+                        {client.lastCheckIn
+                          .replace('INCIDENT:', 'СИГНАЛ ЗА ПРОБЛЕМ:')
+                          .replace('Доставено и подписано от двете страни', 'Успешно предадена и подписана храна')}
+                      </p>
+                    </div>
+                  )}
+
+                  {client.notes && (
+                    <div className="rounded-xl bg-amber-50/50 p-3 border border-amber-100/50">
+                      <p className="text-[11px] text-amber-700 font-bold italic">Бележка: {client.notes}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
