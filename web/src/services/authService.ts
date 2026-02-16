@@ -24,12 +24,28 @@ import {
   signOut,
   User
 } from 'firebase/auth';
-import { auth } from './firebase';
+import { auth, db } from './firebase'; 
+import { doc, getDoc } from 'firebase/firestore';
 
-export type FirebaseUser = User;
+export type FirebaseUser = User & { role?: string };
 
-export async function login(email: string, password: string): Promise<void> {
-  await signInWithEmailAndPassword(auth, email.trim(), password);
+export async function login(email: string, password: string): Promise<FirebaseUser> {
+  const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+  const user = userCredential.user;
+
+  const userDoc = await getDoc(doc(db, 'users', user.uid));
+  
+  if (!userDoc.exists()) {
+    throw new Error('user-not-found-in-db');
+  }
+
+  const userData = userDoc.data();
+  return { ...user, role: userData.role };
+}
+
+export async function getUserRole(uid: string): Promise<string | null> {
+  const userDoc = await getDoc(doc(db, 'users', uid));
+  return userDoc.exists() ? userDoc.data().role : null;
 }
 
 export async function createUserAccount(email: string, password: string): Promise<void> {
@@ -40,8 +56,15 @@ export async function logout(): Promise<void> {
   await signOut(auth);
 }
 
-export function subscribeToAuthState(callback: (user: User | null) => void): () => void {
-  return onAuthStateChanged(auth, callback);
+export function subscribeToAuthState(callback: (user: FirebaseUser | null) => void): () => void {
+  return onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      const role = await getUserRole(user.uid);
+      callback({ ...user, role: role || undefined });
+    } else {
+      callback(null);
+    }
+  });
 }
 
 export const getFriendlyErrorMessage = (errorCode: string): string => {

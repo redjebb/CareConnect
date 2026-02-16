@@ -2,7 +2,10 @@
   "name": "careconnect",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["web", "mobile"],
+  "workspaces": [
+    "web",
+    "mobile"
+  ],
   "scripts": {
     "dev:web": "npm --workspace web run dev",
     "build:web": "npm --workspace web run build",
@@ -15,5 +18,10 @@
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
+  },
+  "dependencies": {
+    "jspdf": "^4.1.0",
+    "jspdf-autotable": "^5.0.7",
+    "lucide-react": "^0.564.0"
   }
 }
