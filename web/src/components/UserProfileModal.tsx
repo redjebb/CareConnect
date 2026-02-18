@@ -115,33 +115,30 @@ export default function UserProfileModal({
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
       <div className="w-full max-w-4xl bg-white rounded-[2.5rem] shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in zoom-in-95">
         
-        {/* НОВИЯТ ОЛЕКОТЕН CSS ЗА ПЕЧАТ */}
+        {}
         <style>{`
           @media screen { 
             #printable-report { display: none !important; } 
           }
           @media print {
-            /* 1. Правим всичко на страницата невидимо */
-            body * { 
-              visibility: hidden !important; 
-            }
+            /* Показваме САМО отчета, без да крием body (което чупи печата) */
+            body * { visibility: hidden !important; }
+            #printable-report, #printable-report * { visibility: visible !important; }
             
-            /* 2. Показваме САМО отчета и неговите деца */
-            #printable-report, #printable-report * { 
-              visibility: visible !important; 
-            }
-            
-            /* 3. Форсираме отчета да застане най-горе на листа */
             #printable-report { 
-              position: absolute !important;
+              display: block !important;
+              position: fixed !important; /* Вади го от структурата на модала */
               left: 0 !important;
               top: 0 !important;
               width: 100% !important;
-              display: block !important;
+              padding: 0 !important;
+              margin: 0 !important;
             }
 
+            #printable-report ~ #printable-report { display: none !important; }
+            
             @page {
-              size: A4;
+              size: auto;
               margin: 10mm;
             }
           }
@@ -266,7 +263,7 @@ export default function UserProfileModal({
           </div>
         </div>
 
-        {/* ПЕЧАТЕН ОТЧЕТ - ТУК НЕ ПИПАМЕ НИЩО ВЪТРЕ */}
+        {/* PRINTABLE REPORT */}
         <div id="printable-report">
           <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 0.5 }}>МЕСЕЧЕН ОТЧЕТ ЗА ДОСТАВКА НА ХРАНА</div>
           <div style={{ marginTop: 6, fontSize: 12, color: '#475569' }}>CareConnect • Период: {reportPeriodLabel}</div>

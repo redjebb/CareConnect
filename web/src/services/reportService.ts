@@ -116,3 +116,95 @@ export const getSystemStats = async () => {
   const snapshot = await getDocs(q);
   return { totalDeliveriesLast30Days: snapshot.size };
 };
+
+export async function getGlobalMonthlyReport(date: Date) {
+  const db = getFirestore();
+  const monthStart = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+  const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+
+  try {
+    // 1. Взимаме всички шофьори за имената и районите
+    const driversSnap = await getDocs(collection(db, 'drivers'));
+    const driversData: Record<string, any> = {};
+    driversSnap.forEach(doc => {
+      driversData[doc.id] = { id: doc.id, ...doc.data() };
+    });
+
+    // 2. Взимаме смените (shifts) за времето
+    const shiftsSnap = await getDocs(collection(db, 'shifts'));
+    const driverShifts: Record<string, number> = {}; // driverId -> общо минути
+    
+    shiftsSnap.forEach(doc => {
+      const shift = doc.data();
+      const sTime = shift.startTime?.toDate ? shift.startTime.toDate() : new Date(shift.startTime);
+      
+      // Проверяваме дали смяната е в избрания месец
+      if (sTime >= monthStart && sTime <= monthEnd && shift.driverId && shift.endTime) {
+        const eTime = shift.endTime?.toDate ? shift.endTime.toDate() : new Date(shift.endTime);
+        const diffMinutes = (eTime.getTime() - sTime.getTime()) / (1000 * 60);
+        
+        if (!driverShifts[shift.driverId]) driverShifts[shift.driverId] = 0;
+        driverShifts[shift.driverId] += diffMinutes;
+      }
+    });
+
+    // 3. Взимаме историята на доставките за бройки и статистики
+    const historySnap = await getDocs(collection(db, 'deliveryHistory'));
+    const allDeliveries = historySnap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() } as any))
+      .filter(d => {
+        const ts = d.timestamp?.toDate ? d.timestamp.toDate() : new Date(d.timestamp);
+        return ts >= monthStart && ts <= monthEnd;
+      });
+
+    const driverMap: Record<string, any> = {};
+
+    // Инициализираме картата с всички шофьори, за да не изпускаме никого
+    Object.keys(driversData).forEach(dId => {
+      const info = driversData[dId];
+      driverMap[dId] = {
+        driverName: info.name || 'Шофьор',
+        routeArea: info.routeArea || 'Неизвестен', // Използваме полето от драйвърите
+        deliveriesCount: 0,
+        issuesCount: 0,
+        rawMinutes: driverShifts[dId] || 0
+      };
+    });
+
+    // Пълним бройките доставки
+    allDeliveries.forEach(d => {
+      const dId = d.driverId;
+      if (dId && driverMap[dId]) {
+        if (d.status === 'success' || d.completed === true) {
+          driverMap[dId].deliveriesCount++;
+        } else if (d.status === 'issue' || d.hasIssue === true) {
+          driverMap[dId].issuesCount++;
+        }
+      }
+    });
+
+    const driverStats = Object.values(driverMap).map(driver => {
+      const hours = Math.floor(driver.rawMinutes / 60);
+      const mins = Math.round(driver.rawMinutes % 60);
+      return {
+        ...driver,
+        totalTime: driver.rawMinutes > 0 ? `${hours}ч. ${mins}м.` : '0ч. 0м.'
+      };
+    });
+
+    const uniqueClientsCount = new Set(allDeliveries.map(d => d.egn)).size;
+
+    return {
+      stats: {
+        totalDeliveries: allDeliveries.filter(d => d.status === 'success' || d.completed).length,
+        uniqueClients: uniqueClientsCount,
+        totalIssues: allDeliveries.filter(d => d.status === 'issue' || d.hasIssue).length,
+        period: date.toLocaleDateString('bg-BG', { month: 'long', year: 'numeric' })
+      },
+      driverStats: driverStats.filter(ds => ds.deliveriesCount > 0 || ds.rawMinutes > 0) // Показваме само активните
+    };
+  } catch (error) {
+    console.error("Грешка при генериране на общ отчет:", error);
+    throw error;
+  }
+}
