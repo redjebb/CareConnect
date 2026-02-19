@@ -7,106 +7,71 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Изтегля данните на потребителя от основната колекция
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    // Проверка за конкретни роли
-    function isMasterAdmin() {
-      return isAuthenticated() && getUserData().role == 'MASTER_ADMIN';
-    }
-
-    function isManager() {
-      return isAuthenticated() && getUserData().role == 'MANAGER';
-    }
-
-    function isDriver() {
-      return isAuthenticated() && getUserData().role == 'DRIVER';
-    }
-
     // Проверка за административен достъп (Master или Manager)
+    // При Auto-ID най-сигурно е да проверяваме дали имейлът съществува в колекция 'admins'
     function isAnyAdmin() {
-      return isMasterAdmin() || isManager();
+      return isAuthenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
     }
 
-    // ----------------------------------------------------
-    // 1. USERS (Ядрото на сигурността)
-    // ----------------------------------------------------
+    // Проверка за Master Admin (Твърдо зададен имейл за най-високо ниво на сигурност)
+    function isMasterAdmin() {
+      return isAuthenticated() && request.auth.token.email == "redjebtudjar@gmail.com";
+    }
+
+    // 1. USERS
     match /users/{userId} {
       allow read: if isAuthenticated() && request.auth.uid == userId;
-      allow write: if isMasterAdmin(); // Само главният админ раздава роли
+      allow write: if isMasterAdmin();
     }
 
-    // ----------------------------------------------------
-    // 2. CLIENTS (Маршрути за деня)
-    // ----------------------------------------------------
+    // 2. CLIENTS
     match /clients/{clientId} {
-      allow read: if isAuthenticated(); // Шофьорите четат къде да ходят
-      allow create, delete: if isAnyAdmin();
-      allow update: if isAuthenticated(); // Шофьорите отбелязват доставка
-    }
-
-    // ----------------------------------------------------
-    // 3. CLIENTS_REGISTRY (Чувствителни данни / ЕГН)
-    // ----------------------------------------------------
-    match /clients_registry/{clientId} {
-      // Само админи имат достъп до пълния регистър
-      allow read, write: if isAnyAdmin();
-    }
-
-    // ----------------------------------------------------
-    // 4. DRIVERS (Профили на шофьорите)
-    // ----------------------------------------------------
-    match /drivers/{driverId} {
       allow read: if isAuthenticated();
       allow create, delete: if isAnyAdmin();
-      // Позволяваме на шофьора да обновява своя статус/локация
       allow update: if isAuthenticated();
     }
 
-    // ----------------------------------------------------
-    // 5. SCHEDULE & SHIFTS (Графици и смени)
-    // ----------------------------------------------------
+    // 3. CLIENTS_REGISTRY
+    match /clients_registry/{clientId} {
+      allow read, write: if isAnyAdmin();
+    }
+
+    // 4. DRIVERS
+    match /drivers/{driverId} {
+      allow read: if isAuthenticated();
+      allow create, delete: if isAnyAdmin();
+      allow update: if isAuthenticated();
+    }
+
+    // 5. SCHEDULE & SHIFTS
     match /schedule/{docId} {
       allow read: if isAuthenticated();
       allow write: if isAnyAdmin();
     }
 
     match /shifts/{shiftId} {
-      // Шофьорите пускат/спират смяна, админите ги контролират
       allow read, write: if isAuthenticated();
     }
 
-    // ----------------------------------------------------
-    // 6. INCIDENTS (SOS Сигнали и проблеми)
-    // ----------------------------------------------------
+    // 6. INCIDENTS
     match /incidents/{incidentId} {
       allow create, read: if isAuthenticated();
       allow update, delete: if isAnyAdmin();
     }
 
-    // ----------------------------------------------------
-    // 7. DELIVERY_HISTORY (Архив на доставките)
-    // ----------------------------------------------------
+    // 7. DELIVERY_HISTORY
     match /deliveryHistory/{docId} {
-      // Всеки шофьор трябва да може да запише успешното предаване
       allow read, write: if isAuthenticated();
     }
 
-    // ----------------------------------------------------
-    // 8. INVITATIONS (Покани за нови служители)
-    // ----------------------------------------------------
+    // 8. INVITATIONS
     match /invitations/{invitationId} {
-      // Позволяваме read без Auth, за да се зареди страницата за активация
       allow read: if true; 
       allow update: if true; 
       allow create, delete: if isAnyAdmin();
     }
 
-    // ----------------------------------------------------
-    // 9. ADMINS (Старият регистър за съвместимост)
-    // ----------------------------------------------------
+    // 9. ADMINS
     match /admins/{adminId} {
       allow read: if isAuthenticated();
       allow write: if isMasterAdmin();

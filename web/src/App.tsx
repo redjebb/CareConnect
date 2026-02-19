@@ -48,16 +48,21 @@ function App() {
   const isManager = user?.role === 'MANAGER';
   const isDriver = user?.role === 'DRIVER';
 
-  // 1. СЛУШАТЕЛ ЗА АУТЕНТИКАЦИЯ
+  // 1. СЛУШАТЕЛ ЗА АВТЕНТИКАЦИЯ
   useEffect(() => {
     const unsubscribe = subscribeToAuthState(currentUser => {
       setUser(currentUser);
-      // Ако има потребител, но ролята още се зарежда в authService, държим лоудъра
-      if (currentUser && currentUser.role === undefined) {
-        setIsDataLoading(true);
-      } else {
+      
+      if (!currentUser) {
+        setIsDataLoading(false);
+        return;
+      }
+
+      if (currentUser.role !== undefined) {
         setIsDataLoading(false);
         setError(null);
+      } else {
+        setIsDataLoading(true);
       }
     });
     return () => unsubscribe();

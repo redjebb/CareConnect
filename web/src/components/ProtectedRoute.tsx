@@ -10,8 +10,7 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ user, allowedRoles, children, isDataLoading }: ProtectedRouteProps) => {
-  // Покажи лоудър не само ако данните се зареждат, но и ако потребителят е там, но ролята му липсва
-  if (isDataLoading || (user && !user.role)) {
+  if (isDataLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950">
         <div className="h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -19,11 +18,29 @@ const ProtectedRoute = ({ user, allowedRoles, children, isDataLoading }: Protect
     );
   }
 
-  if (!user) return <Navigate to="/" replace />;
+  if (!user) {
+    return <Navigate to="/" replace />;
+  }
 
-  if (!user.role || !allowedRoles.includes(user.role)) {
-    // Пренасочване към правилния Dashboard при грешен достъп
-    return <Navigate to={user.role === 'DRIVER' ? "/driver/view" : "/admin/dashboard"} replace />;
+  if (!user.role || user.role === 'NO_ROLE' || !allowedRoles.includes(user.role)) {
+    console.error("Грешка при достъп! Потребител:", user.email, "Роля:", user.role);
+    
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-white p-6">
+        <div className="bg-slate-900 p-8 rounded-2xl border border-red-500/30 text-center shadow-2xl">
+          <h2 className="text-2xl font-bold text-red-500 mb-2">Достъпът е ограничен</h2>
+          <p className="text-slate-400 mb-6">
+            Вашият акаунт ({user.email}) няма необходимите права (Роля: {user.role}).
+          </p>
+          <button 
+            onClick={() => window.location.href = '/'} 
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+          >
+            Към входната страница
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return <>{children}</>;

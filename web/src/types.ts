@@ -32,7 +32,8 @@ export interface Admin {
   id: string;
   name: string;
   email: string;
-  status: 'pending' | 'active';
+  status?: string;
+  role: 'MASTER_ADMIN' | 'MANAGER'; 
 }
 
 export interface ScheduleItem {

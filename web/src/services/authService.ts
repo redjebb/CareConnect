@@ -25,23 +25,48 @@ import {
   User
 } from 'firebase/auth';
 import { auth, db } from './firebase'; 
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 
 export type FirebaseUser = User & { role?: string };
 
-export async function login(email: string, password: string): Promise<FirebaseUser> {
-  const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+async function fetchRoleByEmail(email: string): Promise<string> {
+  try {
+    const adminsRef = collection(db, 'admins');
+    const q = query(adminsRef, where("email", "==", email));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const adminData = querySnapshot.docs[0].data();
+      console.log("Намерен админ:", adminData);
+      return adminData.role || 'MANAGER'; 
+    }
+
+    const driversRef = collection(db, 'drivers');
+    const dq = query(driversRef, where("email", "==", email));
+    const driverSnapshot = await getDocs(dq);
+
+    if (!driverSnapshot.empty) return 'DRIVER';
+
+    return 'NO_ROLE';
+  } catch (error) {
+    console.error("Грешка при fetchRole:", error);
+    return 'NO_ROLE';
+  }
+}
+
+export const login = async (email: string, pass: string) => {
+  const userCredential = await signInWithEmailAndPassword(auth, email, pass);
   const user = userCredential.user;
 
-  const userDoc = await getDoc(doc(db, 'users', user.uid));
-  
-  if (!userDoc.exists()) {
-    throw new Error('user-not-found-in-db');
-  }
+  // Взимаме ролята директно от базата при логин
+  const role = await fetchRoleByEmail(user.email!);
 
-  const userData = userDoc.data();
-  return { ...user, role: userData.role };
-}
+  return {
+    uid: user.uid,
+    email: user.email,
+    role: role
+  };
+};
 
 export async function getUserRole(uid: string): Promise<string | null> {
   const userDoc = await getDoc(doc(db, 'users', uid));
@@ -49,8 +74,42 @@ export async function getUserRole(uid: string): Promise<string | null> {
 }
 
 export async function createUserAccount(email: string, password: string): Promise<void> {
-  await createUserWithEmailAndPassword(auth, email.trim(), password);
+  const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+  const user = userCredential.user;
+
+  await ensureUserDocumentExists(user);
 }
+
+export const ensureUserDocumentExists = async (user: any) => {
+  const userRef = doc(db, 'users', user.uid);
+  const userSnap = await getDoc(userRef);
+
+  // 1. Ако вече има документ в users, връщаме ролята му
+  if (userSnap.exists()) {
+    return userSnap.data().role;
+  }
+
+  // 2. Ако го няма, проверяваме дали имейлът му съществува в колекция 'drivers'
+  const driversRef = collection(db, 'drivers');
+  const q = query(driversRef, where("email", "==", user.email));
+  const querySnapshot = await getDocs(q);
+
+  let roleToAssign = 'MASTER_ADMIN'; // По подразбиране, ако не е в 'drivers', е Админ
+
+  if (!querySnapshot.empty) {
+    roleToAssign = 'DRIVER'; // Намерен е в колекция drivers
+  }
+
+  // 3. Записваме новия потребител в колекция 'users' автоматично
+  await setDoc(userRef, {
+    email: user.email,
+    role: roleToAssign,
+    uid: user.uid,
+    createdAt: new Date().toISOString()
+  });
+
+  return roleToAssign;
+};
 
 export async function logout(): Promise<void> {
   await signOut(auth);
@@ -60,14 +119,14 @@ export function subscribeToAuthState(callback: (user: FirebaseUser | null) => vo
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
       try {
-        const role = await getUserRole(user.uid);
+        const role = await fetchRoleByEmail(user.email!);
         callback({ 
           ...user, 
-          role: role || 'NO_ROLE' 
+          role: role 
         });
       } catch (error) {
-        console.error("Грешка при взимане на роля в абонамента:", error);
-        callback({ ...user, role: undefined });
+        console.error("Грешка при взимане на роля:", error);
+        callback({ ...user, role: 'NO_ROLE' });
       }
     } else {
       callback(null);

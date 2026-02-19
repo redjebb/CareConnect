@@ -40,7 +40,8 @@ const mapAdminDoc = (docSnapshot: QueryDocumentSnapshot<DocumentData>): Admin =>
     id: docSnapshot.id,
     name: typeof data.name === 'string' ? data.name : '',
     email: typeof data.email === 'string' ? data.email : '',
-    status: (data.status === 'active' || data.status === 'pending') ? data.status : 'pending'
+    status: (data.status === 'active' || data.status === 'pending') ? data.status : 'pending',
+    role: (data.role === 'MASTER_ADMIN' || data.role === 'MANAGER') ? data.role : 'MANAGER'
   };
 };
 

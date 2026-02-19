@@ -809,8 +809,13 @@ export function useAdminData(isMasterAdmin: boolean) {
 
   setAdminSubmitting(true);
   try {
-    // 1. Добавяме админ
-    await addAdmin({ name: trimmedName, email: trimmedEmail, status: 'pending' });
+    // 1. Директно добавяне в колекция 'admins' с всички полета
+    await addDoc(collection(db, 'admins'), { 
+      name: trimmedName, 
+      email: trimmedEmail, 
+      status: 'pending',
+      role: 'MANAGER'
+    });
 
     // 2. Създаваме покана
     await addDoc(collection(db, 'invitations'), {
