@@ -30,6 +30,8 @@ import SignatureModal from '../components/SignatureModal';
 import {completeDelivery} from '../services/deliveryService';
 import { startShift, endShift } from '../services/driverStatsService';
 import { getFriendlyErrorMessage } from '../services/authService';
+import { useOnlineStatus } from '../hooks/useOnlineStatus'; 
+import { WifiOff, CloudOff, Wifi } from 'lucide-react';
 
 type DriverVisit = {
   client: Client;
@@ -274,6 +276,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
   const [geoCache, setGeoCache] = useState<Record<string, { lat: number; lng: number } | null>>({});
   const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [isLocationLoading, setIsLocationLoading] = useState(true);
+  const isOnline = useOnlineStatus();
 
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
 
@@ -870,9 +873,20 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-50">
-      <section className="mx-auto flex h-screen max-w-lg flex-col px-4 pb-6 pt-10">
-        <header className="mb-6">
+  <main className="relative min-h-screen bg-slate-950 text-slate-50">
+
+    {!isOnline && (
+      <div className="fixed top-0 left-0 right-0 z-[1000] bg-amber-500 text-white px-4 py-2 flex items-center justify-center gap-3 shadow-2xl animate-in slide-in-from-top duration-300">
+        <WifiOff className="w-4 h-4 animate-pulse" />
+        <div className="flex flex-col">
+          <span className="text-[10px] font-black uppercase tracking-widest leading-none">Офлайн режим</span>
+          <span className="text-[9px] font-bold opacity-90">Промените ще се синхронизират при връзка.</span>
+        </div>
+      </div>
+    )}
+    
+    <section className={`mx-auto flex h-screen max-w-lg flex-col px-4 pb-6 transition-all duration-300 ${!isOnline ? 'pt-20' : 'pt-10'}`}>
+      <header className="mb-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">CareConnect Driver</p>
