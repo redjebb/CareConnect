@@ -10,26 +10,22 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ user, allowedRoles, children, isDataLoading }: ProtectedRouteProps) => {
-  // 1. Докато Firebase проверява сесията, показваме зареждане
-  if (isDataLoading) {
+  // Покажи лоудър не само ако данните се зареждат, но и ако потребителят е там, но ролята му липсва
+  if (isDataLoading || (user && !user.role)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
+      <div className="min-h-screen flex items-center justify-center bg-slate-950">
         <div className="h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
-  // 2. Ако няма логнат потребител - обратно към входа
-  if (!user) {
-    return <Navigate to="/" replace />;
-  }
+  if (!user) return <Navigate to="/" replace />;
 
-  // 3. Ако ролята на потребителя не е в списъка с разрешените - обратно към входа
   if (!user.role || !allowedRoles.includes(user.role)) {
-    return <Navigate to="/" replace />;
+    // Пренасочване към правилния Dashboard при грешен достъп
+    return <Navigate to={user.role === 'DRIVER' ? "/driver/view" : "/admin/dashboard"} replace />;
   }
 
-  // 4. Ако всичко е наред - пускаме потребителя до страницата
   return <>{children}</>;
 };
 

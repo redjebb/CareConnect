@@ -358,7 +358,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
     return () => {
       isMounted = false;
     };
-  }, [currentDriver.id]);
+  }, [currentDriver?.id]);
 
   useEffect(() => {
     if (!navigator.geolocation) {

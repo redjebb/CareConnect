@@ -59,8 +59,16 @@ export async function logout(): Promise<void> {
 export function subscribeToAuthState(callback: (user: FirebaseUser | null) => void): () => void {
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
-      const role = await getUserRole(user.uid);
-      callback({ ...user, role: role || undefined });
+      try {
+        const role = await getUserRole(user.uid);
+        callback({ 
+          ...user, 
+          role: role || 'NO_ROLE' 
+        });
+      } catch (error) {
+        console.error("Грешка при взимане на роля в абонамента:", error);
+        callback({ ...user, role: undefined });
+      }
     } else {
       callback(null);
     }

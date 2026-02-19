@@ -17,6 +17,11 @@
  */
 
 
+/*
+ * CareConnect - Платформа за Домашен Социален Патронаж
+ * Copyright (C) 2026 Адам Биков, Реджеб Туджар
+ */
+
 import 'leaflet/dist/leaflet.css';
 import { FormEvent, useEffect, useState } from 'react';
 import { Driver } from './types';
@@ -24,10 +29,10 @@ import { getDriverByEmail } from './services/driverService';
 import { FirebaseUser, getFriendlyErrorMessage, login, logout, subscribeToAuthState } from './services/authService';
 import AdminDashboard from './views/AdminDashboard';
 import DriverView from './views/DriverView';
-import { Routes, Route, useNavigate, Navigate } from 'react-router-dom'; // Добавих Navigate тук
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import ActivateAccount from './views/activateAccount';
 import { Mail, Lock, LogIn, ShieldCheck, AlertCircle, LayoutDashboard, Truck, ClipboardList } from 'lucide-react';
-import ProtectedRoute from './components/ProtectedRoute'; // Добавих импорта на защитата
+import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   const navigate = useNavigate();
@@ -42,34 +47,41 @@ function App() {
   const isMasterAdmin = user?.role === 'MASTER_ADMIN';
   const isManager = user?.role === 'MANAGER';
   const isDriver = user?.role === 'DRIVER';
-  const isAuthorizedAdmin = isMasterAdmin || isManager;
 
+  // 1. СЛУШАТЕЛ ЗА АУТЕНТИКАЦИЯ
   useEffect(() => {
     const unsubscribe = subscribeToAuthState(currentUser => {
       setUser(currentUser);
-      setError(null);
-      setIsDataLoading(false);
+      // Ако има потребител, но ролята още се зарежда в authService, държим лоудъра
+      if (currentUser && currentUser.role === undefined) {
+        setIsDataLoading(true);
+      } else {
+        setIsDataLoading(false);
+        setError(null);
+      }
     });
     return () => unsubscribe();
   }, []);
 
+  // 2. ЗАРЕЖДАНЕ НА ШОФЬОРСКИ ПРОФИЛ
   useEffect(() => {
     const loadDriverProfile = async () => {
-      if (user && isDriver && user.email) {
-        setIsDataLoading(true);
+      if (user && user.role === 'DRIVER' && user.email) {
         try {
           const profile = await getDriverByEmail(user.email);
           setCurrentDriver(profile);
         } catch (err) {
+          console.error("Грешка при зареждане на шофьор:", err);
           setCurrentDriver(null);
-        } finally {
-          setIsDataLoading(false);
         }
+      } else {
+        setCurrentDriver(null);
       }
     };
     void loadDriverProfile();
-  }, [user, isDriver]);
+  }, [user]);
 
+  // 3. ЛОГИКА ЗА ВХОД
   const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!email || !password) {
@@ -82,10 +94,10 @@ function App() {
       const loggedInUser = await login(email.trim(), password);
       setEmail('');
       setPassword('');
-      if (loggedInUser.role === 'MASTER_ADMIN' || loggedInUser.role === 'MANAGER') {
-        navigate('/admin/dashboard');
-      } else if (loggedInUser.role === 'DRIVER') {
+      if (loggedInUser.role === 'DRIVER') {
         navigate('/driver/view');
+      } else {
+        navigate('/admin/dashboard');
       }
     } catch (err: any) {
       setError(getFriendlyErrorMessage(err.code || err.message));
@@ -94,9 +106,14 @@ function App() {
     }
   };
 
+  // 4. ЛОГИКА ЗА ИЗХОД
   const handleLogout = async () => {
+    setIsDataLoading(true);
     await logout();
-    navigate('/');
+    setUser(null);
+    setCurrentDriver(null);
+    setIsDataLoading(false);
+    navigate('/', { replace: true });
   };
 
   const inputClasses = "w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-12 pr-4 py-4 text-sm text-slate-900 transition-all focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 placeholder:text-slate-400";
@@ -106,38 +123,45 @@ function App() {
     <Routes>
       <Route path="/activate" element={<ActivateAccount />} />
       
-      {/* НОВО: Добавяме изрични пътища за Dashboards със защита */}
-      <Route path="/admin/dashboard" element={
-        <ProtectedRoute user={user} allowedRoles={['MASTER_ADMIN', 'MANAGER']} isDataLoading={isDataLoading}>
-          <AdminDashboard userEmail={user?.email ?? ''} isMasterAdmin={isMasterAdmin} onLogout={handleLogout} />
-        </ProtectedRoute>
-      } />
+      {/* АДМИН ПАНЕЛ */}
+      <Route 
+        path="/admin/dashboard" 
+        element={
+          <ProtectedRoute user={user} allowedRoles={['MASTER_ADMIN', 'MANAGER']} isDataLoading={isDataLoading}>
+            <AdminDashboard userEmail={user?.email ?? ''} isMasterAdmin={isMasterAdmin} onLogout={handleLogout} />
+          </ProtectedRoute>
+        } 
+      />
 
-      <Route path="/driver/view" element={
-        <ProtectedRoute user={user} allowedRoles={['DRIVER']} isDataLoading={isDataLoading}>
-          <DriverView userEmail={user?.email ?? ''} currentDriver={currentDriver!} onLogout={handleLogout} />
-        </ProtectedRoute>
-      } />
+      {/* ШОФЬОРСКИ ПАНЕЛ */}
+      <Route 
+        path="/driver/view" 
+        element={
+          <ProtectedRoute user={user} allowedRoles={['DRIVER']} isDataLoading={isDataLoading}>
+            {currentDriver ? (
+              <DriverView userEmail={user?.email ?? ''} currentDriver={currentDriver} onLogout={handleLogout} />
+            ) : (
+              <main className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
+                <div className="h-10 w-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                <p className="text-emerald-500 font-bold uppercase text-[10px] tracking-widest animate-pulse">Зареждане на профил...</p>
+              </main>
+            )}
+          </ProtectedRoute>
+        } 
+      />
 
-      {/* Твоят оригинален блок за визуализация на началната страница */}
-      <Route path="*" element={
+      {/* НАЧАЛНА СТРАНИЦА / ЛОГИН */}
+      <Route path="/" element={
         isDataLoading ? (
-          <main className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-6 text-center">
-            <div className="animate-pulse">
-              <div className="h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">CareConnect...</p>
-            </div>
+          <main className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+            <div className="h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
           </main>
-        ) : user ? (
-          /* Ако потребителят е логнат, но е на началната страница, Navigate го праща в правилния dashboard */
-          <Navigate to={isDriver ? "/driver/view" : "/admin/dashboard"} replace />
-        ) : (
-          /* Твоят оригинален LOGIN UI */
+        ) : !user ? (
           <main className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4 sm:p-10 relative overflow-hidden">
             <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-100/50 rounded-full blur-[120px]" />
             <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-100/50 rounded-full blur-[120px]" />
             <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-12 items-center relative z-10">
-              <div className="space-y-8 text-center lg:text-left animate-in fade-in slide-in-from-left-6 duration-700">
+              <div className="space-y-8 text-center lg:text-left">
                 <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-xl shadow-blue-200">
                   <ShieldCheck className="w-7 h-7" />
                 </div>
@@ -145,9 +169,6 @@ function App() {
                   <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight leading-tight">
                     Добре дошли в <br/> <span className="text-blue-600">CareConnect</span>
                   </h1>
-                  <p className="mt-4 text-slate-500 font-medium text-base lg:text-lg max-w-md mx-auto lg:mx-0">
-                    Универсална платформа за управление на социални доставки и логистика.
-                  </p>
                 </div>
                 <div className="space-y-4 hidden sm:block">
                   {[
@@ -193,8 +214,12 @@ function App() {
               </div>
             </div>
           </main>
+        ) : (
+          <Navigate to={isDriver ? "/driver/view" : "/admin/dashboard"} replace />
         )
       } />
+
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
