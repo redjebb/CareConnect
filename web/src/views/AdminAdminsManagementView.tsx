@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { UserPlus, Search, Mail, ShieldCheck, Trash2, UserCircle, CheckCircle2, Clock, Shield } from 'lucide-react';
 
-type AdminsListItem = { id: string; name: string; email: string };
+type AdminsListItem = { id: string; name: string; email: string; role?: string; status?: string };
 
 type AdminAdminsManagementViewProps = {
   admins: AdminsListItem[];
@@ -17,10 +17,12 @@ type AdminAdminsManagementViewProps = {
   onDeleteAdmin: (adminId: string) => void;
 };
 
-const AdminStatusBadge = ({ email, invitations }: { email: string; invitations: any[] }) => {
-  const invite = invitations.find(i => i.email === email);
+const AdminStatusBadge = ({ admin, invitations }: { admin: any; invitations: any[] }) => {
+  const invite = invitations.find(i => i.email === admin.email);
 
-  if (!invite || invite.status === 'accepted') {
+  const isActive = admin.status === 'active' || (invite && invite.status === 'accepted');
+
+  if (isActive) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-600 ring-1 ring-emerald-200">
         <CheckCircle2 className="h-3 w-3" /> Активен
@@ -176,11 +178,13 @@ export default function AdminAdminsManagementView({
 
                 <div className="mt-6 flex items-center justify-between border-t border-slate-50 pt-5">
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ниво на достъп</span>
-                    <p className="text-xs font-bold text-slate-700">Системен администратор</p>
-                  </div>
+               <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ниво на достъп</span>
+               <p className="text-xs font-bold text-slate-700">
+                {admin.role === 'MASTER_ADMIN' ? 'Системен администратор' : 'Оперативен мениджър'}
+  </p>
+</div>
                   
-                  <AdminStatusBadge email={admin.email} invitations={invitations} />
+                  <AdminStatusBadge admin={admin} invitations={invitations} />
                 </div>
               </div>
             ))}

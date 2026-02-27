@@ -19,9 +19,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { db } from '../services/firebase'; 
+import { db, auth} from '../services/firebase'; 
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { createUserAccount, getFriendlyErrorMessage } from '../services/authService';
+import { createUserAccount, getFriendlyErrorMessage, ensureUserDocumentExists } from '../services/authService';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 
 export default function ActivateAccount() {
   const [searchParams] = useSearchParams();
@@ -72,26 +73,40 @@ export default function ActivateAccount() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMessage(null);
-
-    if (password.length < 6) {
-      setErrorMessage("Паролата трябва да е поне 6 символа.");
-      return;
-    }
-
+    
     if (password !== confirmPassword) {
-      setErrorMessage("Паролите не съвпадат.");
+      setErrorMessage("Паролите не съвпадат!");
       return;
     }
 
     setIsSubmitting(true);
-    try {
-      // 1. Регистрираме потребителя в Firebase Authentication
-      await createUserAccount(email, password);
+    setErrorMessage(null);
 
-      // 2. Маркираме поканата като 'accepted' в колекция 'invitations'
-      const invQ = query(collection(db, 'invitations'), where('email', '==', email));
+    try {
+      let user: any = null;
+
+      try {
+        // 1. Опитваме нормална регистрация
+        const userCredential = await createUserAccount(email, password);
+        user = userCredential.user;
+      } catch (authErr: any) {
+        // УМЕН ТРИК: Ако акаунтът е "забил" от предишен опит, просто го логваме и продължаваме
+        if (authErr.code === 'auth/email-already-in-use') {
+          console.log("Акаунтът съществува в Auth, правим опит за вход и довършване на базата...");
+          const loginCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+          user = loginCredential.user;
+          await ensureUserDocumentExists(user); // Гарантираме, че е в колекция users
+        } else {
+          throw authErr; // Ако е друга грешка (напр. слаба парола), я хвърляме
+        }
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // 2. Обновяваме поканата
+      const invQ = query(collection(db, 'invitations'), where('email', '==', email.trim()));
       const invSnapshot = await getDocs(invQ);
+      
       if (!invSnapshot.empty) {
         await updateDoc(doc(db, 'invitations', invSnapshot.docs[0].id), {
           status: 'accepted',
@@ -99,28 +114,28 @@ export default function ActivateAccount() {
         });
       }
 
-      // 3. Обновяваме статуса на 'active' в съответната роля (drivers ИЛИ admins)
-      // Проверяваме и двете колекции, защото потребителят може да е или едното, или другото
-      const roles = ['drivers', 'admins'];
-      
+      // 3. Обновяваме статуса в admins или drivers
+      const roles = ['admins', 'drivers'];
       for (const role of roles) {
-        const roleQ = query(collection(db, role), where('email', '==', email));
-        const roleSnapshot = await getDocs(roleQ);
+        const q = query(collection(db, role), where('email', '==', email.trim()));
+        const snapshot = await getDocs(q);
         
-        if (!roleSnapshot.empty) {
-          await updateDoc(doc(db, role, roleSnapshot.docs[0].id), {
-            status: 'active'
+        if (!snapshot.empty) {
+          await updateDoc(doc(db, role, snapshot.docs[0].id), {
+            status: 'active',
+            uid: user.uid
           });
+          console.log(`Статусът в ${role} беше обновен на active!`);
         }
       }
 
-      alert("Акаунтът е активиран успешно! Вече можете да влезете в системата.");
+      alert("Акаунтът е активиран успешно!");
       navigate('/'); 
+
     } catch (err: any) {
-  console.error("Грешка при активация:", err);
-  const friendlyMessage = getFriendlyErrorMessage(err.code);
-  setErrorMessage(friendlyMessage);
-} finally {
+      console.error(err);
+      setErrorMessage(getFriendlyErrorMessage(err.code || ''));
+    } finally {
       setIsSubmitting(false);
     }
   };

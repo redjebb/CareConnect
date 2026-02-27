@@ -73,34 +73,45 @@ export async function getUserRole(uid: string): Promise<string | null> {
   return userDoc.exists() ? userDoc.data().role : null;
 }
 
-export async function createUserAccount(email: string, password: string): Promise<void> {
+export async function createUserAccount(email: string, password: string): Promise<any> {
   const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
   const user = userCredential.user;
 
   await ensureUserDocumentExists(user);
+  
+  return userCredential; 
 }
 
 export const ensureUserDocumentExists = async (user: any) => {
   const userRef = doc(db, 'users', user.uid);
   const userSnap = await getDoc(userRef);
 
-  // 1. Ако вече има документ в users, връщаме ролята му
+  // 1. Ако вече има документ, връщаме ролята
   if (userSnap.exists()) {
     return userSnap.data().role;
   }
 
-  // 2. Ако го няма, проверяваме дали имейлът му съществува в колекция 'drivers'
-  const driversRef = collection(db, 'drivers');
-  const q = query(driversRef, where("email", "==", user.email));
-  const querySnapshot = await getDocs(q);
+  // 2. Намираме реалната роля (Търсим в admins, после в drivers)
+  let roleToAssign = 'USER'; 
 
-  let roleToAssign = 'MASTER_ADMIN'; // По подразбиране, ако не е в 'drivers', е Админ
-
-  if (!querySnapshot.empty) {
-    roleToAssign = 'DRIVER'; // Намерен е в колекция drivers
+  // Проверка за Мениджър
+  const adminsRef = collection(db, 'admins');
+  const adminQ = query(adminsRef, where("email", "==", user.email));
+  const adminSnap = await getDocs(adminQ);
+  
+  if (!adminSnap.empty) {
+    roleToAssign = 'MANAGER';
+  } else {
+    // Проверка за Шофьор
+    const driversRef = collection(db, 'drivers');
+    const driverQ = query(driversRef, where("email", "==", user.email));
+    const driverSnap = await getDocs(driverQ);
+    if (!driverSnap.empty) {
+      roleToAssign = 'DRIVER';
+    }
   }
 
-  // 3. Записваме новия потребител в колекция 'users' автоматично
+  // 3. Записваме новия потребител в 'users' 
   await setDoc(userRef, {
     email: user.email,
     role: roleToAssign,

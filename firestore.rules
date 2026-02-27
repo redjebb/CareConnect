@@ -1,33 +1,31 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Проверява дали потребителят е влязъл в системата
+
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Проверка за административен достъп (Master или Manager)
-    // При Auto-ID най-сигурно е да проверяваме дали имейлът съществува в колекция 'admins'
     function isAnyAdmin() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+      return isAuthenticated();
     }
 
-    // Проверка за Master Admin (Твърдо зададен имейл за най-високо ниво на сигурност)
     function isMasterAdmin() {
-      return isAuthenticated() && request.auth.token.email == "redjebtudjar@gmail.com";
+      return isAuthenticated() && 
+             (request.auth.token.email.lower() == "redjebtudjar@gmail.com");
     }
 
-    // 1. USERS
+    // 1. USERS 
     match /users/{userId} {
-      allow read: if isAuthenticated() && request.auth.uid == userId;
-      allow write: if isMasterAdmin();
+      allow read, create, update: if isAuthenticated() && request.auth.uid == userId;
+      // Master Admin има пълен достъп до всички
+      allow read, write: if isMasterAdmin();
     }
 
     // 2. CLIENTS
     match /clients/{clientId} {
       allow read: if isAuthenticated();
-      allow create, delete: if isAnyAdmin();
+      allow create, delete: if isAuthenticated();
       allow update: if isAuthenticated();
     }
 
@@ -36,11 +34,11 @@ service cloud.firestore {
       allow read, write: if isAnyAdmin();
     }
 
-    // 4. DRIVERS
+    // 4. DRIVERS 
     match /drivers/{driverId} {
       allow read: if isAuthenticated();
-      allow create, delete: if isAnyAdmin();
-      allow update: if isAuthenticated();
+      allow create, delete: if isMasterAdmin() || isAuthenticated();
+      allow update: if isAuthenticated() || resource.data.status == 'pending';
     }
 
     // 5. SCHEDULE & SHIFTS
@@ -53,28 +51,29 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
-    // 6. INCIDENTS
+    // 6. INCIDENTS 
     match /incidents/{incidentId} {
       allow create, read: if isAuthenticated();
       allow update, delete: if isAnyAdmin();
     }
 
-    // 7. DELIVERY_HISTORY
+    // 7. DELIVERY_HISTORY 
     match /deliveryHistory/{docId} {
       allow read, write: if isAuthenticated();
     }
 
-    // 8. INVITATIONS
+    // 8. INVITATIONS 
     match /invitations/{invitationId} {
       allow read: if true; 
       allow update: if true; 
-      allow create, delete: if isAnyAdmin();
+      allow create, delete: if isAuthenticated();
     }
 
-    // 9. ADMINS
+    // 9. ADMINS 
     match /admins/{adminId} {
       allow read: if isAuthenticated();
-      allow write: if isMasterAdmin();
+      allow update: if isAuthenticated() || resource.data.status == 'pending';
+      allow create, delete: if isMasterAdmin();
     }
   }
 }

@@ -342,14 +342,13 @@ export function useAdminData(isMasterAdmin: boolean) {
   }, [profileSearch, sortedRegistryEntries]);
 
   const todayClients = useMemo(() => {
-    const today = new Date();
     return clients.filter(client => {
-      if (!client.nextVisitDate) return false;
-      const parsed = new Date(client.nextVisitDate);
-      if (Number.isNaN(parsed.getTime())) return false;
-      return isSameDay(parsed, today);
+      const hasScheduleForSelectedDate = scheduleItems.some(
+        item => isSameDay(new Date(item.date), selectedDate) && item.clientId === client.id
+      );
+      return hasScheduleForSelectedDate;
     });
-  }, [clients]);
+  }, [clients, scheduleItems, selectedDate]);
 
   const totalClientsToday = todayClients.length;
 
@@ -747,43 +746,44 @@ export function useAdminData(isMasterAdmin: boolean) {
     setDriverForm(prev => ({ ...prev, selectedCity: city, routeArea: '' }));
   };
 
-  const handleAddDriver = async (event: React.FormEvent<HTMLFormElement>) => {
-  event.preventDefault();
-  const { name, email, phone, selectedCity, routeArea } = driverForm;
-  const trimmedEmail = email.trim();
-  const combinedRoute = `${selectedCity.trim()}, ${routeArea.trim()}`;
+ const handleAddDriver = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const { name, email, phone, selectedCity, routeArea } = driverForm;
+    const trimmedEmail = email.trim();
+    const combinedRoute = `${selectedCity.trim()}, ${routeArea.trim()}`;
 
-  setDriverSubmitting(true);
-  try {
-    // 1. Добавяме шофьор
-    await addDriver({ 
-      name: name.trim(), 
-      email: trimmedEmail, 
-      phone: phone.trim(), 
-      routeArea: combinedRoute,
-      status: 'pending' 
-    });
+    setDriverSubmitting(true);
+    try {
+      // 1. Добавяме шофьор със статус PENDING и роля DRIVER
+      await addDriver({ 
+        name: name.trim(), 
+        email: trimmedEmail, 
+        phone: phone.trim(), 
+        routeArea: combinedRoute,
+        status: 'pending',
+        role: 'DRIVER' 
+      });
 
-    // 2. Създаваме покана
-    await addDoc(collection(db, 'invitations'), {
-      email: trimmedEmail,
-      role: 'driver',
-      status: 'sent',
-      createdAt: new Date().toISOString()
-    });
+      // 2. Създаваме покана 
+      await addDoc(collection(db, 'invitations'), {
+        email: trimmedEmail,
+        role: 'driver',
+        status: 'pending', 
+        createdAt: new Date().toISOString()
+      });
 
-    // 3. EmailJS
-    const activationUrl = `https://careconnect-d7bd7.web.app/activate?email=${encodeURIComponent(trimmedEmail)}`;
-    await emailjs.send('service_dkng7ol', 'template_picgzcg', { email: trimmedEmail, link: activationUrl }, 'ikmstn4Jj0VVM1gWD');
+      // 3. EmailJS
+      const activationUrl = `https://careconnect-d7bd7.web.app/activate?email=${encodeURIComponent(trimmedEmail)}`;
+      await emailjs.send('service_dkng7ol', 'template_picgzcg', { email: trimmedEmail, link: activationUrl }, 'ikmstn4Jj0VVM1gWD');
 
-    setDriverForm({ name: '', email: '', phone: '', routeArea: '', selectedCity: '' });
-    await fetchDrivers();
-  } catch (err) {
-    setDriversError('Грешка при добавяне.');
-  } finally {
-    setDriverSubmitting(false);
-  }
-};
+      setDriverForm({ name: '', email: '', phone: '', routeArea: '', selectedCity: '' });
+      await fetchDrivers();
+    } catch (err) {
+      setDriversError('Грешка при добавяне.');
+    } finally {
+      setDriverSubmitting(false);
+    }
+  };
 
   const handleDeleteDriver = async (driverId: string) => {
     setDriverDeletingId(driverId);
@@ -809,7 +809,7 @@ export function useAdminData(isMasterAdmin: boolean) {
 
   setAdminSubmitting(true);
   try {
-    // 1. Директно добавяне в колекция 'admins' с всички полета
+    // 1.Добавяне в колекция 'admins' с всички полета
     await addDoc(collection(db, 'admins'), { 
       name: trimmedName, 
       email: trimmedEmail, 

@@ -26,6 +26,7 @@ export interface Driver {
   phone: string;
   routeArea: string;
   status: 'pending' | 'active';
+  role?: string;
 }
 
 export interface Admin {

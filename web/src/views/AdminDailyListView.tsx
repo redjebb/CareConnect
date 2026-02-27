@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import type { Client, ClientRegistryEntry, Driver, ScheduleItem } from '../types';
 import ScheduleCalendar from '../scheduleCalendar';
@@ -103,6 +104,21 @@ export default function AdminDailyListView({
   }
 };
 
+  const isSameDay = (d1: Date, d2: Date) => {
+    return d1.getFullYear() === d2.getFullYear() &&
+           d1.getMonth() === d2.getMonth() &&
+           d1.getDate() === d2.getDate();
+  };
+
+  const filteredClientsForSelectedDate = useMemo(() => {
+    return clients.filter(client => {
+      return scheduleItems.some(item => {
+        const itemDate = new Date(item.date);
+        return isSameDay(itemDate, selectedDate) && item.clientId === client.id;
+      });
+    });
+  }, [clients, scheduleItems, selectedDate]);
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       
@@ -170,13 +186,13 @@ export default function AdminDailyListView({
           <div className="py-20 text-center font-bold text-slate-400 animate-pulse uppercase text-xs tracking-widest">
             Обновяване на списъка...
           </div>
-        ) : clients.length === 0 ? (
+        ) : filteredClientsForSelectedDate.length === 0 ? (
           <div className="rounded-[3rem] bg-slate-100/50 border-2 border-dashed border-slate-200 p-16 text-center">
             <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">Няма планирани доставки за тази дата</p>
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-1 xl:grid-cols-2">
-            {clients.map(client => (
+            {filteredClientsForSelectedDate.map(client => (
               <div 
                 key={client.id} 
                 onClick={() => handleCardClick(client)}
