@@ -32,6 +32,7 @@ import { startShift, endShift } from '../services/driverStatsService';
 import { getFriendlyErrorMessage } from '../services/authService';
 import { useOnlineStatus } from '../hooks/useOnlineStatus'; 
 import { WifiOff, CloudOff, Wifi } from 'lucide-react';
+import { useNotification } from '../components/NotificationProvider';
 
 type DriverVisit = {
   client: Client;
@@ -277,6 +278,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
   const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [isLocationLoading, setIsLocationLoading] = useState(true);
   const isOnline = useOnlineStatus();
+  const { showNotification } = useNotification();
 
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
 
@@ -634,7 +636,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
       return;
     }
     if (!isShiftActive) {
-      alert('Моля, първо започнете смяната, за да подадете сигнал.');
+      showNotification('Моля, първо започнете смяната, за да подадете сигнал.', 'warning');
       return;
     }
     setIncidentClient(client);
@@ -670,12 +672,12 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
   const handleSubmitIncidentReport = useCallback(
     async (incidentType: string, description: string) => {
       if (!incidentClient) {
-        alert('Моля, изберете клиент.');
+        showNotification('Моля, изберете клиент.', 'warning');
         return;
       }
 
       if (!isShiftActive) {
-        alert('Не можете да подавате сигнал без активна смяна.');
+        showNotification('Моля, първо започнете смяната, за да подадете сигнал.', 'warning');
         return;
       }
 
@@ -710,31 +712,28 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         );
 
         await handleIncidentReportSuccess();
-        alert('✅ Сигналът е изпратен успешно!');
+        showNotification('Сигналът е изпратен успешно!', 'success');
         handleCloseIncidentModal();
       } catch (err: any) {
         console.error('Грешка при изпращане на сигнал:', err);
         const friendlyMessage = getFriendlyErrorMessage(err.code || err.message);
-        alert(friendlyMessage);
+        showNotification(friendlyMessage, 'error');
 }
     },
     [incidentClient, currentDriver?.id, handleIncidentReportSuccess, isShiftActive, currentPosition, geoCache]
   );
 
-  const handleStartShift = async () => { // Добавяме async
+  const handleStartShift = async () => { 
   try {
-    // 1. Първо записваме в базата данни (Firestore)
     if (currentDriver?.id) {
       await startShift(currentDriver.id); 
     }
 
-    // 2. След това обновяваме локалното състояние (твоя оригинален код)
     const now = new Date().toISOString();
     setIsShiftActive(true);
     setShiftStartTime(now);
     setShowStartShiftModal(false);
 
-    // 3. Запазваме в локалния сторидж за всеки случай
     saveShiftToStorage({
       isActive: true,
       startTime: now,
@@ -744,13 +743,12 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
     console.log("✅ Смяната е отразена в базата и локално.");
   } catch (err: any) {
   console.error('Грешка при започване на смяна:', err); 
-  alert(getFriendlyErrorMessage(err.code || err.message));
+  showNotification(getFriendlyErrorMessage(err.code || err.message), 'error');
 }
 };
 
   const handleEndShift = async () => {
     try {
-      // 1. Първо затваряме смяната в Firestore
       if (currentDriver?.id) {
         await endShift(currentDriver.id);
         console.log("✅ Смяната е приключена в Firestore");
@@ -848,7 +846,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
 
     } catch (err: any) {
   console.error('Грешка при завършване на смяна:', err); 
-  alert(getFriendlyErrorMessage(err.code || err.message));
+  showNotification(getFriendlyErrorMessage(err.code || err.message), 'error');
 }
   }; 
 

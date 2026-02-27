@@ -20,6 +20,7 @@
 import { useEffect, useRef, useState } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
 import { Client } from '../types';
+import { useNotification } from '../components/NotificationProvider';
 
 interface SignatureModalProps {
   isOpen: boolean;
@@ -33,6 +34,8 @@ export default function SignatureModal({ isOpen, client, onCancel, onComplete }:
   const [signatureStep, setSignatureStep] = useState<1 | 2>(1);
   const [driverSignature, setDriverSignature] = useState<string | null>(null);
   const [signatureError, setSignatureError] = useState<string | null>(null);
+  
+  const { showNotification } = useNotification();
 
   useEffect(() => {
     if (isOpen) {
@@ -51,7 +54,7 @@ export default function SignatureModal({ isOpen, client, onCancel, onComplete }:
 
   const handleConfirm = async () => {
     if (!sigCanvasRef.current) {
-      alert('Моля, положете подпис!');
+      showNotification('Моля, положете подпис!', 'warning');
       return;
     }
 
@@ -59,7 +62,7 @@ export default function SignatureModal({ isOpen, client, onCancel, onComplete }:
     const isEmpty = typeof canvas.isEmpty === 'function' ? canvas.isEmpty() : true;
     if (isEmpty) {
       setSignatureError('Моля, поставете подпис.');
-      alert('Моля, положете подпис!');
+      showNotification('Моля, положете подпис!', 'warning');
       return;
     }
 
@@ -73,7 +76,7 @@ export default function SignatureModal({ isOpen, client, onCancel, onComplete }:
     }
 
     if (!driverSignature) {
-      alert('Липсва подпис на шофьора. Моля, подпишете първо като шофьор.');
+      showNotification('Липсва подпис на шофьора. Моля, подпишете първо като шофьор.', 'error');
       setSignatureStep(1);
       canvas.clear();
       return;

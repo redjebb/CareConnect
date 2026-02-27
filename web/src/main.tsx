@@ -22,6 +22,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css'; 
 import { BrowserRouter } from 'react-router-dom';
+import { NotificationProvider } from './components/NotificationProvider'
 
 // Намира root елемента от index.html
 const rootElement = document.getElementById('root');
@@ -29,10 +30,11 @@ const rootElement = document.getElementById('root');
 if (rootElement) {
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
-      {/* Обгръщаме App, за да работят маршрутите (Routes) */}
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
+      <NotificationProvider>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </NotificationProvider>
     </React.StrictMode>,
   );
 }

@@ -23,10 +23,14 @@ import { db, auth} from '../services/firebase';
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { createUserAccount, getFriendlyErrorMessage, ensureUserDocumentExists } from '../services/authService';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { useNotification } from '../components/NotificationProvider';
 
 export default function ActivateAccount() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { showNotification } = useNotification();
+  
+  
   
   const [status, setStatus] = useState<'loading' | 'valid' | 'invalid'>('loading');
   const [email, setEmail] = useState('');
@@ -70,6 +74,7 @@ export default function ActivateAccount() {
 
     verifyInvitation();
   }, [emailParam]);
+  
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,7 +134,7 @@ export default function ActivateAccount() {
         }
       }
 
-      alert("Акаунтът е активиран успешно!");
+      showNotification("Акаунтът е активиран успешно!", "success");
       navigate('/'); 
 
     } catch (err: any) {
