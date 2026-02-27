@@ -193,6 +193,7 @@ export default function ClientForm({
             <label className={labelClasses}>ЕГН</label>
             <input
               type="text"
+              maxLength={10}
               value={clientForm.egn}
               onChange={event => onClientInputChange('egn', event.target.value)}
               readOnly={!!selectedRegistryEntryId}
@@ -204,6 +205,7 @@ export default function ClientForm({
             <label className={labelClasses}><Phone className="w-3.5 h-3.5" /> Телефонен номер</label>
             <input
               type="tel"
+              maxLength={10}
               value={clientForm.phone}
               onChange={event => onClientInputChange('phone', event.target.value)}
               className={inputClasses}
@@ -242,7 +244,6 @@ export default function ClientForm({
               placeholder="Започнете да пишете адрес..."
               required
             />
-            {isAddressVerified && <CheckCircle className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-500" />}
           </div>
           
           {showAddressSuggestions && addressSuggestions.length > 0 && (

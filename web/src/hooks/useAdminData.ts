@@ -33,6 +33,7 @@ import {
   updateRegistryEntry
 } from '../services/clientsRegistryService';
 import type { Client, ClientHistoryEntry, ClientRegistryEntry, Driver, Incident, ScheduleItem } from '../types';
+import { useNotification } from '../components/NotificationProvider';
 
 type ClientWithSchedule = Client & { nextVisitDate?: string | null };
 
@@ -99,6 +100,12 @@ const fetchPhotonSuggestions = async (query: string) => {
 };
 
 export function useAdminData(isMasterAdmin: boolean) {
+  const { showNotification } = useNotification();
+
+  const isValidEgn = (egn: string) => /^\d{10}$/.test(egn.trim());
+  const isValidPhone = (phone: string) => /^\d{10}$/.test(phone.replace(/[\s\-]/g, ''));
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
   const [currentView, setCurrentView] = useState<'clients' | 'drivers' | 'admins'>('clients');
   const [clientManagementTab, setClientManagementTab] = useState<'registry' | 'daily'>('daily');
 
@@ -399,7 +406,17 @@ export function useAdminData(isMasterAdmin: boolean) {
     event.preventDefault();
     const trimmedEgn = registryForm.egn.trim();
     if (!trimmedEgn) {
-      setRegistryError('ЕГН е задължително поле.');
+      showNotification('ЕГН е задължително поле.', 'warning');
+      return;
+    }
+
+    if (!isValidEgn(trimmedEgn)) {
+      showNotification('ЕГН трябва да съдържа точно 10 цифри.', 'error');
+      return;
+    }
+
+    if (registryForm.phone && !isValidPhone(registryForm.phone)) {
+      showNotification('Телефонният номер трябва да съдържа точно 10 цифри.', 'error');
       return;
     }
 
@@ -407,7 +424,7 @@ export function useAdminData(isMasterAdmin: boolean) {
       entry => entry.egn.trim() === trimmedEgn && entry.id !== registryEditingId
     );
     if (existingWithSameEgn) {
-      setRegistryError('В регистъра вече има запис с това ЕГН.');
+      showNotification('В регистъра вече има запис с това ЕГН.', 'error');
       return;
     }
 
@@ -444,7 +461,7 @@ export function useAdminData(isMasterAdmin: boolean) {
       ]);
     } catch (err) {
       console.error('Неуспешно записване в регистъра.', err);
-      setRegistryError('Неуспешно записване в регистъра.');
+      showNotification('Неуспешно записване в регистъра.', 'error');
     } finally {
       setRegistrySubmitting(false);
     }
@@ -514,7 +531,7 @@ export function useAdminData(isMasterAdmin: boolean) {
       }
     } catch (err) {
       console.error('Неуспешно изтриване от регистъра.', err);
-      setRegistryError('Неуспешно изтриване от регистъра.');
+      showNotification('Неуспешно изтриване от регистъра.', 'error');
     } finally {
       setRegistryDeletingId(null);
     }
@@ -584,15 +601,27 @@ export function useAdminData(isMasterAdmin: boolean) {
   const handleAddClient = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!clientForm.name || !clientForm.address) {
-      setClientsError('Моля, попълнете името и адреса.');
+      showNotification('Моля, попълнете името и адреса.', 'error');
       return;
     }
     if (!clientForm.assignedDriverId) {
-      setClientsError('Моля, изберете шофьор за клиента.');
+      showNotification('Моля, изберете шофьор за клиента.', 'error');
       return;
     }
     if (!clientForm.serviceDate) {
-      setClientsError('Моля, изберете дата за посещение.');
+      showNotification('Моля, изберете дата за посещение.', 'error');
+      return;
+    }
+
+    const trimmedEgn = clientForm.egn.trim();
+    if (trimmedEgn && !/^\d{10}$/.test(trimmedEgn)) {
+      showNotification('ЕГН трябва да съдържа точно 10 цифри.', 'error');
+      return;
+    }
+
+    const cleanedPhone = clientForm.phone.replace(/[\s\-]/g, '');
+    if (cleanedPhone && !/^\d{10}$/.test(cleanedPhone)) {
+      showNotification('Телефонният номер трябва да съдържа точно 10 цифри.', 'error');
       return;
     }
 
@@ -641,11 +670,14 @@ export function useAdminData(isMasterAdmin: boolean) {
         fetchScheduleItems(),
         fetchRegistryEntries()
       ]);
+      showNotification(`Клиентът ${clientForm.name} е добавен към графика!`, 'success');
     } catch {
       setClientsError('Неуспешно добавяне на клиент.');
     } finally {
       setClientSubmitting(false);
     }
+
+
   };
 
   const formatDateForInput = (value: Date) => value.toISOString().slice(0, 10);
@@ -655,11 +687,23 @@ export function useAdminData(isMasterAdmin: boolean) {
     setClientForm(prev => ({ ...prev, serviceDate: nextDateValue }));
 
     if (!clientForm.name || !clientForm.address) {
-      setClientsError('Моля, попълнете името и адреса.');
+      showNotification('Моля, попълнете името и адреса.', 'warning');
       return;
     }
     if (!clientForm.assignedDriverId) {
-      setClientsError('Моля, изберете шофьор за клиента.');
+      showNotification('Моля, изберете шофьор за клиента.', 'warning');
+      return;
+    }
+
+    const trimmedEgn = clientForm.egn.trim();
+    if (trimmedEgn && !/^\d{10}$/.test(trimmedEgn)) {
+      showNotification('ЕГН трябва да съдържа точно 10 цифри.', 'error');
+      return;
+    }
+
+    const cleanedPhone = clientForm.phone.replace(/[\s\-]/g, '');
+    if (cleanedPhone && !/^\d{10}$/.test(cleanedPhone)) {
+      showNotification('Телефонният номер трябва да съдържа точно 10 цифри.', 'error');
       return;
     }
 
@@ -710,7 +754,7 @@ export function useAdminData(isMasterAdmin: boolean) {
       ]);
     } catch (err) {
       console.error('Неуспешно добавяне на клиент за днес.', err);
-      setClientsError('Неуспешно добавяне на клиент.');
+      showNotification('Неуспешно добавяне на клиент.', 'error');
     } finally {
       setClientSubmitting(false);
     }
@@ -731,8 +775,9 @@ export function useAdminData(isMasterAdmin: boolean) {
         fetchScheduleItems(),
         fetchRegistryEntries()
       ]);
-    } catch {
-      setClientsError('Неуспешно изтриване на клиента.');
+      showNotification('Изтриването беше успешно.', 'success');
+    } catch (err) {
+      showNotification('Неуспешно изтриване на клиента.', 'error');
     } finally {
       setClientDeletingId(null);
     }
@@ -750,6 +795,18 @@ export function useAdminData(isMasterAdmin: boolean) {
     event.preventDefault();
     const { name, email, phone, selectedCity, routeArea } = driverForm;
     const trimmedEmail = email.trim();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setDriversError('Моля, въведете валиден имейл адрес (напр. driver@careconnect.bg).');
+      return;
+    }
+
+    const cleanedPhone = phone.replace(/[\s\-]/g, '');
+    if (!/^\d{10}$/.test(cleanedPhone)) {
+      setDriversError('Телефонният номер трябва да съдържа точно 10 цифри.');
+      return;
+    }
+
     const combinedRoute = `${selectedCity.trim()}, ${routeArea.trim()}`;
 
     setDriverSubmitting(true);
@@ -778,11 +835,13 @@ export function useAdminData(isMasterAdmin: boolean) {
 
       setDriverForm({ name: '', email: '', phone: '', routeArea: '', selectedCity: '' });
       await fetchDrivers();
+      showNotification('Шофьорът е създаден и поканата е изпратена!', 'success');
     } catch (err) {
       setDriversError('Грешка при добавяне.');
     } finally {
       setDriverSubmitting(false);
     }
+
   };
 
   const handleDeleteDriver = async (driverId: string) => {
@@ -791,8 +850,9 @@ export function useAdminData(isMasterAdmin: boolean) {
     try {
       await deleteDriver(driverId);
       await fetchDrivers();
-    } catch {
-      setDriversError('Неуспешно изтриване на шофьор.');
+      showNotification('Изтриването беше успешно.', 'success');
+    } catch (err) {
+      showNotification('Неуспешно изтриване на шофьор.', 'error');
     } finally {
       setDriverDeletingId(null);
     }
@@ -806,6 +866,11 @@ export function useAdminData(isMasterAdmin: boolean) {
   event.preventDefault();
   const trimmedEmail = adminForm.email.trim();
   const trimmedName = adminForm.name.trim();
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setAdminsError('Моля, въведете валиден имейл адрес.');
+      return;
+    }
 
   setAdminSubmitting(true);
   try {
@@ -831,6 +896,7 @@ export function useAdminData(isMasterAdmin: boolean) {
 
     setAdminForm({ name: '', email: '' });
     await fetchAdmins();
+    showNotification('Новият мениджър е добавен успешно!', 'success');
   } catch (err) {
     setAdminsError('Грешка при добавяне.');
   } finally {
@@ -844,8 +910,9 @@ export function useAdminData(isMasterAdmin: boolean) {
     try {
       await deleteAdmin(adminId);
       await fetchAdmins();
-    } catch {
-      setAdminsError('Неуспешно изтриване на администратор.');
+      showNotification('Изтриването беше успешно.', 'success');
+    } catch (err) {
+      showNotification('Неуспешно изтриване на администратор.', 'error');
     } finally {
       setAdminDeletingId(null);
     }
@@ -863,7 +930,7 @@ export function useAdminData(isMasterAdmin: boolean) {
       });
     } catch (error) {
       console.error('Error generating report:', error);
-      setClientsError('Грешка при генериране на отчета.');
+      showNotification('Грешка при генериране на отчета.', 'error');
       setShowReport(false);
     } finally {
       setReportGenerating(false);

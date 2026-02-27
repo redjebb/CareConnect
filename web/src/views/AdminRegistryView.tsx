@@ -113,6 +113,7 @@ export default function AdminRegistryView({
                 <label className={labelClasses}><Phone className="w-3 h-3" /> Телефон</label>
                 <input
                   type="tel"
+                  maxLength={10}
                   value={registryForm.phone}
                   onChange={e => onRegistryInputChange('phone', e.target.value)}
                   className={inputClasses}

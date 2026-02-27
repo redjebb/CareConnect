@@ -61,7 +61,6 @@ export default function SignatureModal({ isOpen, client, onCancel, onComplete }:
     const canvas = sigCanvasRef.current;
     const isEmpty = typeof canvas.isEmpty === 'function' ? canvas.isEmpty() : true;
     if (isEmpty) {
-      setSignatureError('Моля, поставете подпис.');
       showNotification('Моля, положете подпис!', 'warning');
       return;
     }
