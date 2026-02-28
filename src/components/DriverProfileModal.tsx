@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { X, MapPin, Phone, Mail, Package, AlertTriangle, CheckCircle, FileText, Printer, ArrowLeft, Clock, BarChart3, PenTool } from 'lucide-react';
-import SignatureViewerModal from '../components/SignatureViewerModal';
+import SignatureViewerModal from './SignatureViewerModal';
 
 interface DriverProfileModalProps {
   isOpen: boolean;

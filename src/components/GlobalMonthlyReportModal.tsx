@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { X, FileBarChart, Users, Package, AlertTriangle, Clock, Printer, Loader2, MapPin, User } from 'lucide-react';
 import { getGlobalMonthlyReport } from '../services/reportService';
-import { useNotification } from '../components/NotificationProvider';
+import { useNotification } from './NotificationProvider';
 // 1. ИМПОРТИРАМЕ ПРОФИЛА НА ШОФЬОРА
 import DriverProfileModal from './DriverProfileModal'; // Провери пътя, ако е в друга папка
 

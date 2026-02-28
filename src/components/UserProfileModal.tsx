@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ClientHistoryEntry, ClientRegistryEntry } from '../types';
 import { getClientMonthlyReport } from '../services/reportService';
 import { X, User, MapPin, Phone, Calendar, Printer, PlusCircle, AlertCircle, Clock, ChevronRight, PenTool } from 'lucide-react';
-import SignatureViewerModal from '../components/SignatureViewerModal';
-import { useNotification } from '../components/NotificationProvider'; // Провери пътя тук
+import SignatureViewerModal from './SignatureViewerModal';
+import { useNotification } from './NotificationProvider'; // Провери пътя тук
 
 interface UserProfileModalProps {
   isOpen: boolean;

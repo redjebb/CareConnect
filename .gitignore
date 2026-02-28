@@ -1,20 +1,33 @@
-# dependencies
-node_modules
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
+# Зависимости (библиотеки)
+node_modules/
+.pnp
+.pnp.js
 
-# build outputs
-dist
-build
-.expo
-.expo-shared
+# Изходни файлове от билда (Vite / Production)
+dist/
+build/
+*.local
 
-# env
-.env*
+# Firebase специфични файлове
+.firebase/
+firestore.indexes.json
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
 
-# editor
-.vscode
-.idea
+# Конфиденциални данни (Критично!)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Системни и редакторски файлове
+.vscode/
+.idea/
 .DS_Store
+Thumbs.db
+*.log
+
+# Тестове
+/coverage

@@ -2,26 +2,51 @@
   "name": "careconnect",
   "version": "0.1.0",
   "private": true,
-  "workspaces": [
-    "web",
-    "mobile"
-  ],
+  "type": "module",
   "scripts": {
-    "dev:web": "npm --workspace web run dev",
-    "build:web": "npm --workspace web run build",
-    "preview:web": "npm --workspace web run preview",
-    "lint:web": "npm --workspace web run lint",
-    "dev:mobile": "npm --workspace mobile run start",
-    "build:mobile": "npm --workspace mobile run build",
-    "lint:mobile": "npm --workspace mobile run lint"
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
   },
   "dependencies": {
-    "jspdf": "^4.1.0",
+    "@emailjs/browser": "^4.4.1",
+    "file-saver": "^2.0.5",
+    "firebase": "^12.6.0",
+    "jspdf": "^3.0.4",
     "jspdf-autotable": "^5.0.7",
-    "lucide-react": "^0.564.0"
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.564.0",
+    "react": "^18.3.1",
+    "react-calendar": "^6.0.0",
+    "react-dom": "^18.3.1",
+    "react-leaflet": "^4.2.1",
+    "react-router-dom": "^7.13.0",
+    "react-signature-canvas": "^1.1.0-alpha.2"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/file-saver": "^2.0.7",
+    "@types/leaflet": "^1.9.21",
+    "@types/node": "^20.14.2",
+    "@types/react": "^18.3.11",
+    "@types/react-calendar": "^3.9.0",
+    "@types/react-dom": "^18.3.5",
+    "@types/react-signature-canvas": "^1.0.7",
+    "@vitejs/plugin-react": "^4.3.2",
+    "autoprefixer": "^10.4.20",
+    "esbuild": "^0.27.0",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.6.3",
+    "vite": "^7.2.4",
+    "vitest": "^4.0.18"
   }
 }

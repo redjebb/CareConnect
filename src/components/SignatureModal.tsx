@@ -20,7 +20,7 @@
 import { useEffect, useRef, useState } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
 import { Client } from '../types';
-import { useNotification } from '../components/NotificationProvider';
+import { useNotification } from './NotificationProvider';
 
 interface SignatureModalProps {
   isOpen: boolean;
