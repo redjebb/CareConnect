@@ -30,7 +30,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const id = Math.random().toString(36).substring(2, 9);
     setNotifications((prev) => [...prev, { id, message, type }]);
 
-    // Автоматично скриване след 4 секунди
+    // Auto-dismiss after 4 seconds
     setTimeout(() => {
       setNotifications((prev) => prev.filter((notification) => notification.id !== id));
     }, 4000);
@@ -62,7 +62,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     <NotificationContext.Provider value={{ showNotification }}>
       {children}
       
-      {/* Контейнер за нотификации */}
+      
       <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-3 pointer-events-none">
         {notifications.map((note) => (
           <div

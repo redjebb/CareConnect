@@ -48,7 +48,7 @@ function App() {
   const isManager = user?.role === 'MANAGER';
   const isDriver = user?.role === 'DRIVER';
 
-  // 1. СЛУШАТЕЛ ЗА АВТЕНТИКАЦИЯ
+  // Auth state listener
   useEffect(() => {
     const unsubscribe = subscribeToAuthState(currentUser => {
       setUser(currentUser);
@@ -68,7 +68,7 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. ЗАРЕЖДАНЕ НА ШОФЬОРСКИ ПРОФИЛ
+  // Load driver profile when user has DRIVER role
   useEffect(() => {
     const loadDriverProfile = async () => {
       if (user && user.role === 'DRIVER' && user.email) {
@@ -86,7 +86,7 @@ function App() {
     void loadDriverProfile();
   }, [user]);
 
-  // 3. ЛОГИКА ЗА ВХОД
+  // Login handler
   const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!email || !password) {
@@ -111,7 +111,7 @@ function App() {
     }
   };
 
-  // 4. ЛОГИКА ЗА ИЗХОД
+  // Logout handler
   const handleLogout = async () => {
     setIsDataLoading(true);
     await logout();
@@ -128,7 +128,6 @@ function App() {
     <Routes>
       <Route path="/activate" element={<ActivateAccount />} />
       
-      {/* АДМИН ПАНЕЛ */}
       <Route 
         path="/admin/dashboard" 
         element={
@@ -138,7 +137,6 @@ function App() {
         } 
       />
 
-      {/* ШОФЬОРСКИ ПАНЕЛ */}
       <Route 
         path="/driver/view" 
         element={
@@ -155,7 +153,6 @@ function App() {
         } 
       />
 
-      {/* НАЧАЛНА СТРАНИЦА / ЛОГИН */}
       <Route path="/" element={
         isDataLoading ? (
           <main className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">

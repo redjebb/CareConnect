@@ -687,7 +687,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
       try {
         const incidentTimestamp = new Date().toISOString();
 
-        // 1. Запис в базата данни (Инциденти)
+        // Record the incident
         await addIncident({
           clientId: incidentClient.id,
           driverId: currentDriver.id,
@@ -695,13 +695,13 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
           description
         });
 
-        // 2. Запис в историята на доставките (като Проблем)
+        // Log delivery as an issue in history
         await completeDelivery({
           clientId: incidentClient.id,
           clientName: incidentClient.name || '---',
           egn: incidentClient?.egn || 'N/A',
           driverId: currentDriver.id,
-          driverName: currentDriver.name, // Записваме и името на шофьора тук за пълнота!
+          driverName: currentDriver.name,
           startLocation: currentPosition || { lat: 0, lng: 0 },
           endLocation: geoCache[getAddressKey(incidentClient?.address || '')] || { lat: 0, lng: 0 },
           timestamp: new Date(),
@@ -712,25 +712,18 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
           issueDescription: description
         } as any);
 
-        // 3. Обновяване на статуса на клиента за деня
+        // Update client status for the day
         await updateClientLastCheckIn(
           incidentClient.id,
           `INCIDENT: ${incidentType} ${incidentTimestamp}`
         );
 
-        // ==========================================
-// 4. ИЗПРАЩАНЕ НА ИМЕЙЛ ДО ОТГОВОРНИЯ АДМИН
-// ==========================================
-
-// Намираме графика за този клиент. 
-// Тъй като шофьорът вижда само задачи за днес/утре, 
-// филтрираме само по clientId, за да сме сигурни, че ще вземем записа.
+        // Send SOS email to the admin who assigned this task
 const todaysScheduleForClient = scheduleItems.find(item => 
   item.clientId === incidentClient.id && 
-  item.driverId === currentDriver.id // добавяме и проверка за шофьора за сигурност
+  item.driverId === currentDriver.id
 );
 
-// Вземаме имейла на админа
 const targetAdminEmail = todaysScheduleForClient?.assignedByAdminEmail;
 
 if (targetAdminEmail) {
@@ -756,10 +749,8 @@ if (targetAdminEmail) {
     console.error("❌ Грешка при изпращане на имейл чрез EmailJS:", emailErr);
   }
 } else {
-  // Ако пак влезе тук, ще ни изпише за кой клиент става въпрос, за да дебъгнем по-лесно
   console.warn(`⚠️ Не е намерен админ имейл в обекта за клиент: ${incidentClient.name}. Обектът от базата е:`, todaysScheduleForClient);
 }
-        // ==========================================
 
         await handleIncidentReportSuccess();
         showNotification('Сигналът е изпратен успешно!', 'success');

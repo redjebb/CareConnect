@@ -91,24 +91,24 @@ export default function ActivateAccount() {
       let user: any = null;
 
       try {
-        // 1. Опитваме нормална регистрация
+        // Attempt normal registration
         const userCredential = await createUserAccount(email, password);
         user = userCredential.user;
       } catch (authErr: any) {
-        // УМЕН ТРИК: Ако акаунтът е "забил" от предишен опит, просто го логваме и продължаваме
+        // If account exists from a prior incomplete attempt, sign in and continue
         if (authErr.code === 'auth/email-already-in-use') {
           console.log("Акаунтът съществува в Auth, правим опит за вход и довършване на базата...");
           const loginCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
           user = loginCredential.user;
-          await ensureUserDocumentExists(user); // Гарантираме, че е в колекция users
+          await ensureUserDocumentExists(user);
         } else {
-          throw authErr; // Ако е друга грешка (напр. слаба парола), я хвърляме
+          throw authErr;
         }
       }
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // 2. Обновяваме поканата
+      // Mark invitation as accepted
       const invQ = query(collection(db, 'invitations'), where('email', '==', email.trim()));
       const invSnapshot = await getDocs(invQ);
       
@@ -119,7 +119,7 @@ export default function ActivateAccount() {
         });
       }
 
-      // 3. Обновяваме статуса в admins или drivers
+      // Activate the user in admins or drivers collection
       const roles = ['admins', 'drivers'];
       for (const role of roles) {
         const q = query(collection(db, role), where('email', '==', email.trim()));

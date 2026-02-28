@@ -6,9 +6,8 @@ interface ArcGisSuggestion {
   text?: string;
 }
 
-// 1. Модифицирана функция за предложения с фокус върху основните градове
+// Fetch address suggestions from ArcGIS, restricted to supported Bulgarian cities
 const fetchArcGisSuggestions = async (query: string) => {
-  // Увеличаваме maxSuggestions на 15, за да имаме повече материал за филтриране
   const url = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/suggest?text=${encodeURIComponent(
     query
   )}&f=json&countryCode=BGR&maxSuggestions=15`;
@@ -21,23 +20,22 @@ const fetchArcGisSuggestions = async (query: string) => {
   
   const mapped = suggestions.map(item => item.text?.trim() ?? '').filter(Boolean);
 
-  // СТРИКТНО ФИЛТРИРАНЕ: Оставяме САМО адреси, които съдържат някой от градовете
-  const allowedCities = ['софия', 'пловдив', 'варна', 'sofia', 'plovdiv', 'varna'];
+  // Only keep addresses within the supported service cities
+  const allowedCities = ['София', 'Пловдив', 'Варна'];
   
   const filtered = mapped.filter(address => {
     const lowerAddress = address.toLowerCase();
     return allowedCities.some(city => lowerAddress.includes(city));
   });
 
-  // Допълнително сортиране, за да е сигурно, че ако потребителят е започнал с името на града, той е най-отгоре
+  // Prioritize results that start with the city name
   return filtered.sort((a, b) => {
-    // Ако адресът започва с града, дай му предимство
     const aStartsWithCity = allowedCities.some(city => a.toLowerCase().startsWith(city));
     const bStartsWithCity = allowedCities.some(city => b.toLowerCase().startsWith(city));
     if (aStartsWithCity && !bStartsWithCity) return -1;
     if (!aStartsWithCity && bStartsWithCity) return 1;
     return 0;
-  }).slice(0, 5); // Връщаме само топ 5 чисти резултата
+  }).slice(0, 5);
 };
 
 interface ClientFormState {
@@ -147,7 +145,6 @@ export default function ClientForm({
 
       <div className="flex-1 p-6 space-y-8 overflow-y-auto">
         
-        {/* 1. Търсене в регистър */}
         <div className="relative group">
           <label className={labelClasses}><Search className="w-3.5 h-3.5" /> Бързо търсене в регистър</label>
           <div className="relative">
@@ -191,7 +188,6 @@ export default function ClientForm({
           )}
         </div>
 
-        {/* 2. Лични данни */}
         <div className="grid gap-6 sm:grid-cols-2">
           <div className="sm:col-span-1">
             <label className={labelClasses}>Име на клиента</label>
@@ -230,7 +226,6 @@ export default function ClientForm({
           </div>
         </div>
 
-        {/* 3. Адресна информация с AUTO-SELECT логика */}
         <div className="relative">
           <label className={labelClasses}><MapPin className="w-3.5 h-3.5" /> Точен адрес</label>
           <div className="relative">
@@ -245,19 +240,17 @@ export default function ClientForm({
               }}
               onFocus={() => setShowAddressSuggestions(true)}
               onBlur={() => {
-                // 2. Логика за автоматично избиране на първия адрес
+                // Auto-select first suggestion on blur if address is unverified
                 window.setTimeout(() => {
                   const currentVal = clientForm.address.trim();
                   
-                  // Ако има предложения и нищо не е потвърдено още
                   if (currentVal && !isAddressVerified && addressSuggestions.length > 0) {
                     handleSelectAddress(addressSuggestions[0]);
                   } 
-                  // Ако е извън списъка и не е празно
                   else if (currentVal && !isAddressVerified) {
                     onClientInputChange('address', '');
                     setIsAddressVerified(false);
-                    setAddressWarning('Моля, изберете валиден адрес от списъка.');
+                    setAddressWarning('Моля, изберете валиден адрес от предложенията.');
                   }
                   setShowAddressSuggestions(false);
                 }, 300);
@@ -293,7 +286,6 @@ export default function ClientForm({
           {addressWarning && <p className="mt-2 text-xs font-bold text-red-500 flex items-center gap-1"><X className="w-3 h-3" /> {addressWarning}</p>}
         </div>
 
-        {/* 4. Настройки на доставка */}
         <div className="space-y-6 pt-4 border-t border-slate-100">
            <div className="grid gap-6 sm:grid-cols-2">
              <div>

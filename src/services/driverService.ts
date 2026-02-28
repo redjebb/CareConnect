@@ -17,7 +17,7 @@
  */
 
 
-import { addDoc, collection, deleteDoc, doc, getDocs, query, where, writeBatch } from 'firebase/firestore'; // Добавихме writeBatch
+import { addDoc, collection, deleteDoc, doc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 import { Driver } from '../types';
 
@@ -45,34 +45,29 @@ export async function getDrivers(): Promise<Driver[]> {
   });
 }
 
-// ФУНКЦИЯ ЗА ИЗТРИВАНЕ:
+// Cascading delete: removes driver and all related schedule, shifts, and invitation records
 export async function deleteDriver(id: string): Promise<void> {
   try {
     const batch = writeBatch(db);
 
-    // 1. Първо намираме данните на шофьора, за да му вземем имейла
     const driverDocRef = doc(driversCollection, id);
     const driverSnap = await getDocs(query(driversCollection, where('__name__', '==', id)));
     const driverData = !driverSnap.empty ? driverSnap.docs[0].data() : null;
 
-    // 2. Добавяме изтриването на самия шофьор в пакета (batch)
     batch.delete(driverDocRef);
 
-    // 3. Намиране и изтриване на ГРАФИКА (schedule)
     const scheduleQuery = query(collection(db, 'schedule'), where('driverId', '==', id));
     const scheduleSnapshot = await getDocs(scheduleQuery);
     scheduleSnapshot.forEach((docSnap) => {
       batch.delete(docSnap.ref);
     });
 
-    // 4. Намиране и изтриване на СМЕНИТЕ (shifts)
     const shiftsQuery = query(collection(db, 'shifts'), where('driverId', '==', id));
     const shiftsSnapshot = await getDocs(shiftsQuery);
     shiftsSnapshot.forEach((docSnap) => {
       batch.delete(docSnap.ref);
     });
 
-    // 5. Намиране и изтриване на ПОКАНАТА (invitations) по имейл
     if (driverData && driverData.email) {
       const invQuery = query(collection(db, 'invitations'), where('email', '==', driverData.email));
       const invSnapshot = await getDocs(invQuery);
@@ -82,7 +77,6 @@ export async function deleteDriver(id: string): Promise<void> {
       console.log(`🧹 Изтрита покана за: ${driverData.email}`);
     }
 
-    // Изпълняваме всичко наведнъж
     await batch.commit();
     console.log(`✅ Шофьор ${id} и всички свързани данни са изтрити напълно.`);
 

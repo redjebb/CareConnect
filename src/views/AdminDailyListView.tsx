@@ -52,7 +52,7 @@ type AdminDailyListViewProps = {
     driverSignature?: string | null;
     lastCheckIn?: string | null;
   }) => void;
-  onViewProfile: (entry: ClientRegistryEntry) => void; // Добавено за отваряне на профил
+  onViewProfile: (entry: ClientRegistryEntry) => void;
 };
 
 export default function AdminDailyListView({
@@ -169,7 +169,6 @@ export default function AdminDailyListView({
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       
-     {/* 1. СТАТИСТИКА */}
       <section className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         {[
           { label: 'Клиенти', val: totalClientsToday, icon: <Users />, color: 'text-blue-500', bg: 'bg-blue-50/50', border: 'border-blue-100' },
@@ -180,7 +179,6 @@ export default function AdminDailyListView({
           <div key={i} className={`rounded-[2rem] bg-white p-5 border ${s.border} shadow-sm transition-all hover:shadow-md`}>
             <div className="flex items-center justify-between">
               <div className={`p-2 rounded-xl ${s.bg} ${s.color} ${s.pulse ? 'animate-pulse' : ''}`}>{s.icon}</div>
-              {/* ТУК Е ПРОМЯНАТА: */}
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                 {getStatsDateLabel(selectedDate)}
               </span>
@@ -191,7 +189,6 @@ export default function AdminDailyListView({
         ))}
       </section>
 
-      {/* 2. РАБОТНА ПЛОЩ */}
       <section className="grid gap-8 lg:grid-cols-[380px_1fr]">
         <div className="rounded-[2.5rem] bg-white border border-slate-100 shadow-sm overflow-hidden h-fit lg:sticky lg:top-24">
           <ScheduleCalendar
@@ -223,7 +220,6 @@ export default function AdminDailyListView({
         </div>
       </section>
 
-      {/* 3. СПИСЪК С КЛИЕНТИ */}
       <section className="space-y-6">
         <div className="px-4">
           <h3 className="text-xl font-black text-slate-900 leading-none">График за деня</h3>
@@ -249,7 +245,6 @@ export default function AdminDailyListView({
                 className={`group relative flex flex-col rounded-[2.5rem] bg-white p-6 border border-slate-100 shadow-sm transition-all hover:shadow-md ${client.egn ? 'cursor-pointer hover:border-blue-400' : ''}`}
               >
                 
-                {/* Горна част на картата */}
                 <div className="flex items-start justify-between">
                   <div className="flex gap-4">
                     <div className="h-14 w-14 flex-shrink-0 rounded-[1.25rem] bg-slate-50 flex items-center justify-center text-xl font-black text-slate-300 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
@@ -279,7 +274,6 @@ export default function AdminDailyListView({
                   </button>
                 </div>
 
-                {/* Адрес */}
                 <div className="mt-5 space-y-4">
                   <div className="flex flex-col gap-1 rounded-2xl bg-slate-50/50 p-4 border border-slate-50">
                     <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-1">
@@ -288,7 +282,6 @@ export default function AdminDailyListView({
                     <p className="text-xs font-bold text-slate-600 leading-relaxed">{client.address}</p>
                   </div>
 
-                  {/* Статус и Детайли */}
                   <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                     <div className="flex items-center gap-2">
                       {getStatusBadge(client.lastCheckIn)}

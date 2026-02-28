@@ -24,7 +24,6 @@ import './index.css';
 import { BrowserRouter } from 'react-router-dom';
 import { NotificationProvider } from './components/NotificationProvider'
 
-// Намира root елемента от index.html
 const rootElement = document.getElementById('root');
 
 if (rootElement) {

@@ -51,7 +51,7 @@ export interface Incident {
     driverId: string;
     clientId: string;
     date: string; // ISO string for when the incident was reported
-    type: string; // e.g., 'Не отвори', 'Клиент в лошо състояние'
+    type: string;
     description: string;
     status: 'Open' | 'Resolved' | 'Escalated';
 }

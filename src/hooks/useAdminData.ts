@@ -813,7 +813,7 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
 
     setDriverSubmitting(true);
     try {
-      // 1. Добавяме шофьор със статус PENDING и роля DRIVER
+      // Create driver record with pending status
       await addDriver({ 
         name: name.trim(), 
         email: trimmedEmail, 
@@ -823,7 +823,7 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
         role: 'DRIVER' 
       });
 
-      // 2. Създаваме покана 
+      // Create invitation record
       await addDoc(collection(db, 'invitations'), {
         email: trimmedEmail,
         role: 'driver',
@@ -831,7 +831,7 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
         createdAt: new Date().toISOString()
       });
 
-      // 3. EmailJS
+      // Send activation email via EmailJS
       const activationUrl = `https://careconnect-d7bd7.web.app/activate?email=${encodeURIComponent(trimmedEmail)}`;
       await emailjs.send('service_dkng7ol', 'template_picgzcg', { email: trimmedEmail, link: activationUrl }, 'ikmstn4Jj0VVM1gWD');
 
@@ -876,7 +876,7 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
 
   setAdminSubmitting(true);
   try {
-    // 1.Добавяне в колекция 'admins' с всички полета
+    // Create admin record with pending status
     await addDoc(collection(db, 'admins'), { 
       name: trimmedName, 
       email: trimmedEmail, 
@@ -884,7 +884,7 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
       role: 'MANAGER'
     });
 
-    // 2. Създаваме покана
+    // Create invitation record
     await addDoc(collection(db, 'invitations'), {
       email: trimmedEmail,
       role: 'admin',
@@ -892,7 +892,7 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
       createdAt: new Date().toISOString()
     });
 
-    // 3. EmailJS
+    // Send activation email via EmailJS
     const activationUrl = `https://careconnect-d7bd7.web.app/activate?email=${encodeURIComponent(trimmedEmail)}`;
     await emailjs.send('service_dkng7ol', 'template_picgzcg', { email: trimmedEmail, link: activationUrl }, 'ikmstn4Jj0VVM1gWD');
 

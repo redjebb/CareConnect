@@ -48,7 +48,7 @@
   export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: AdminDashboardProps) {
     const adminData = useAdminData(isMasterAdmin, userEmail);
     const [invitations, setInvitations] = useState<any[]>([]);
-    const [isPrinting, setIsPrinting] = useState(false); // <--- Ново състояние
+    const [isPrinting, setIsPrinting] = useState(false);
 
     const [isSigModalOpen, setIsSigModalOpen] = useState(false);
     const [selectedSigData, setSelectedSigData] = useState<{
@@ -140,7 +140,7 @@
     return (
       <main className="min-h-screen bg-[#F8FAFC] pb-20">
         
-        {!isPrinting && ( // <--- Обвиваме всичко, за да не се показва при печат
+        {!isPrinting && (
           <>
             <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/80 backdrop-blur-md">
               <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -226,7 +226,6 @@
                       </button>
                     </div>
                     
-                    {/* БУТОН ЗА МЕСЕЧЕН ОТЧЕТ */}
                     <button
                       onClick={handleGenerateOfficialReport}
                       className="flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-5 py-2 text-[10px] font-black uppercase tracking-widest text-blue-600 shadow-sm hover:bg-blue-50 transition-all active:scale-95"
@@ -345,7 +344,6 @@
           </>
         )}
 
-        {/* --- ОФИЦИАЛЕН МЕСЕЧЕН ОТЧЕТ (ВИЖДА СЕ САМО ПРИ ПРИНТИРАНЕ) --- */}
         {isPrinting && (
           <div className="bg-white p-12 text-black min-h-screen font-serif">
             <div className="max-w-4xl mx-auto border border-gray-400 p-10">
@@ -407,7 +405,6 @@
           </div>
         )}
 
-        {/* MODALS - Показват се само ако не принтираме */}
         {!isPrinting && (
           <>
             <UserProfileModal

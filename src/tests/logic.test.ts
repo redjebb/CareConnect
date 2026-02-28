@@ -1,7 +1,6 @@
 import { expect, test, describe } from 'vitest';
 
-// ТУК: Импортирай твоите функции. Ако са вътре в DriverView, извади ги в utils.ts
-// За целите на теста, ето примерни функции, които вероятно имаш:
+// Haversine formula for distance calculation between two GPS coordinates
 const calculateDistance = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
   const toRad = (v: number) => (v * Math.PI) / 180;
   const R = 6371;
@@ -19,7 +18,7 @@ describe('CareConnect Core Logic', () => {
     const plovdiv = { lat: 42.1354, lng: 24.7453 };
     const dist = calculateDistance(sofia, plovdiv);
     
-    // Трябва да е около 130-135 км
+    // Expected: ~130-135 km
     expect(dist).toBeGreaterThan(130);
     expect(dist).toBeLessThan(140);
   });
@@ -31,6 +30,6 @@ describe('CareConnect Core Logic', () => {
     const d1 = new Date(date1).toDateString();
     const d2 = new Date(date2).toDateString();
     
-    expect(d1).toBe(d2); // Доказва, че графикът работи правилно през целия ден
+    expect(d1).toBe(d2);
   });
 });

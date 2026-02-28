@@ -3,7 +3,7 @@ import type { ClientHistoryEntry, ClientRegistryEntry } from '../types';
 import { getClientMonthlyReport } from '../services/reportService';
 import { X, User, MapPin, Phone, Calendar, Printer, PlusCircle, AlertCircle, Clock, ChevronRight, PenTool } from 'lucide-react';
 import SignatureViewerModal from './SignatureViewerModal';
-import { useNotification } from './NotificationProvider'; // Провери пътя тук
+import { useNotification } from './NotificationProvider';
 
 interface UserProfileModalProps {
   isOpen: boolean;

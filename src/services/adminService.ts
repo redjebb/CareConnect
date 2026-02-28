@@ -28,12 +28,10 @@ import {
   updateDoc 
 } from 'firebase/firestore';
 import { db } from './firebase';
-// Импортираме общия интерфейс от types.ts
 import { Admin } from '../types';
 
 const adminsCollection = collection(db, 'admins');
 
-// Помощна функция за преобразуване на данните от Firestore
 const mapAdminDoc = (docSnapshot: QueryDocumentSnapshot<DocumentData>): Admin => {
   const data = docSnapshot.data();
   return {
@@ -50,7 +48,6 @@ export async function getAdmins(): Promise<Admin[]> {
   return snapshot.docs.map(mapAdminDoc);
 }
 
-// Променена функция, която приема и статус
 export async function addAdmin(admin: Omit<Admin, 'id'>): Promise<string> {
   const payload = {
     name: admin.name.trim(),

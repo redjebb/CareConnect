@@ -58,7 +58,7 @@ export const login = async (email: string, pass: string) => {
   const userCredential = await signInWithEmailAndPassword(auth, email, pass);
   const user = userCredential.user;
 
-  // Взимаме ролята директно от базата при логин
+  // Fetch role from Firestore on login
   const role = await fetchRoleByEmail(user.email!);
 
   return {
@@ -86,15 +86,14 @@ export const ensureUserDocumentExists = async (user: any) => {
   const userRef = doc(db, 'users', user.uid);
   const userSnap = await getDoc(userRef);
 
-  // 1. Ако вече има документ, връщаме ролята
+  // Return existing role if user document already exists
   if (userSnap.exists()) {
     return userSnap.data().role;
   }
 
-  // 2. Намираме реалната роля (Търсим в admins, после в drivers)
+  // Determine role by checking admins, then drivers collections
   let roleToAssign = 'USER'; 
 
-  // Проверка за Мениджър
   const adminsRef = collection(db, 'admins');
   const adminQ = query(adminsRef, where("email", "==", user.email));
   const adminSnap = await getDocs(adminQ);
@@ -102,7 +101,6 @@ export const ensureUserDocumentExists = async (user: any) => {
   if (!adminSnap.empty) {
     roleToAssign = 'MANAGER';
   } else {
-    // Проверка за Шофьор
     const driversRef = collection(db, 'drivers');
     const driverQ = query(driversRef, where("email", "==", user.email));
     const driverSnap = await getDocs(driverQ);
@@ -111,7 +109,7 @@ export const ensureUserDocumentExists = async (user: any) => {
     }
   }
 
-  // 3. Записваме новия потребител в 'users' 
+  // Persist user document with resolved role
   await setDoc(userRef, {
     email: user.email,
     role: roleToAssign,

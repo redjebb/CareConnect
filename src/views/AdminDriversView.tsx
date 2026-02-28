@@ -72,7 +72,6 @@ export default function AdminDriversView({
 
   return (
     <section className="grid gap-8 lg:grid-cols-[400px_1fr] items-start">
-      {/* ФОРМА ЗА ДОБАВЯНЕ */}
       <aside className="lg:sticky lg:top-24">
         <form onSubmit={onSubmit} className="overflow-hidden rounded-[2.5rem] bg-white border border-slate-100 shadow-xl shadow-slate-200/60">
           <div className="bg-slate-50 p-6 border-b border-slate-100">
@@ -170,7 +169,6 @@ export default function AdminDriversView({
         </form>
       </aside>
 
-      {/* СПИСЪК С ШОФЬОРИ */}
       <main className="space-y-6">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between px-2">
           <div>
@@ -230,7 +228,7 @@ export default function AdminDriversView({
                   
                   <button 
                     onClick={(e) => {
-                      e.stopPropagation(); // Спира отварянето на профила при натискане на изтрий
+                      e.stopPropagation();
                       if (window.confirm(`Сигурни ли сте, че искате да изтриете ${driver.name}?`)) {
                         onDeleteDriver(driver.id);
                       }

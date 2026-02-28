@@ -1,10 +1,9 @@
 import { expect, test, describe } from 'vitest';
 
-// Симулираме структурата на графика, която разработихме
 interface ScheduleItem {
   id: string;
   clientName: string;
-  assignedByAdminEmail: string; // Новата функционалност
+  assignedByAdminEmail: string;
   status: 'pending' | 'delivered' | 'incident';
 }
 
@@ -16,11 +15,9 @@ describe('Email Notification Routing System', () => {
   ];
 
   test('Трябва да изпрати SOS имейл към правилния администратор спрямо назначената задача', () => {
-    // Симулираме инцидент при Клиент 1
     const incidentOccurredAt = '1';
     const incidentTask = mockSchedule.find(t => t.id === incidentOccurredAt);
     
-    // Логика за определяне на получател
     const recipientEmail = incidentTask?.assignedByAdminEmail;
     
     expect(recipientEmail).toBe('admin.sofia@careconnect.bg');
@@ -31,7 +28,7 @@ describe('Email Notification Routing System', () => {
     const invalidTask: Partial<ScheduleItem> = {
       id: '3',
       clientName: 'Анонимен',
-      assignedByAdminEmail: '' // Липсва имейл
+      assignedByAdminEmail: ''
     };
 
     const canSendEmail = invalidTask.assignedByAdminEmail && invalidTask.assignedByAdminEmail.includes('@');

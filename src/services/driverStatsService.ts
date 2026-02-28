@@ -12,7 +12,7 @@ import {
   limit 
 } from 'firebase/firestore';
 
-// 1. ЗАПОЧВАНЕ НА СМЯНА
+// Start a new shift
 export const startShift = async (driverId: string) => {
   try {
     const shiftData = {
@@ -31,10 +31,10 @@ export const startShift = async (driverId: string) => {
   }
 };
 
-// 2. ПРИКЛЮЧВАНЕ НА СМЯНА
+// End the current shift
 export const endShift = async (driverId: string) => {
   try {
-    // Търсим последната активна смяна на този шофьор
+    // Find the latest active shift for this driver
     const q = query(
       collection(db, 'shifts'),
       where('driverId', '==', driverId),

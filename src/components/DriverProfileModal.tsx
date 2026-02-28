@@ -20,7 +20,7 @@ export default function DriverProfileModal({ isOpen, onClose, driver }: DriverPr
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
-  // State за подписите
+  // Signature preview state
   const [previewSignatures, setPreviewSignatures] = useState<{clientName: string, driver: string, client: string} | null>(null);
 
   const [stats, setStats] = useState({

@@ -2,8 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { X, FileBarChart, Users, Package, AlertTriangle, Clock, Printer, Loader2, MapPin, User } from 'lucide-react';
 import { getGlobalMonthlyReport } from '../services/reportService';
 import { useNotification } from './NotificationProvider';
-// 1. ИМПОРТИРАМЕ ПРОФИЛА НА ШОФЬОРА
-import DriverProfileModal from './DriverProfileModal'; // Провери пътя, ако е в друга папка
+import DriverProfileModal from './DriverProfileModal';
 
 interface GlobalMonthlyReportModalProps {
   isOpen: boolean;
@@ -17,7 +16,6 @@ export default function GlobalMonthlyReportModal({ isOpen, onClose, adminEmail }
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   
-  // 2. STATE ЗА ОТВАРЯНЕ НА ПРОФИЛ НА ШОФЬОР
   const [selectedDriver, setSelectedDriver] = useState<any>(null);
 
   useEffect(() => {
@@ -229,7 +227,6 @@ export default function GlobalMonthlyReportModal({ isOpen, onClose, adminEmail }
 
                 <div className="grid gap-3">
                   {data.driverStats.map((driver: any, idx: number) => (
-                    // 3. ДОБАВЯМЕ cursor-pointer И onClick СЪБИТИЕТО ТУК
                     <div 
                       key={idx} 
                       onClick={() => setSelectedDriver({

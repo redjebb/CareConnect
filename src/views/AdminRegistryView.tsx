@@ -77,7 +77,6 @@ export default function AdminRegistryView({
 
   return (
     <section className="grid gap-8 lg:grid-cols-[400px_1fr] items-start">
-      {/* ЛЯВА КОЛОНА: ФОРМА ЗА РЕДАКЦИЯ/ДОБАВЯНЕ */}
       <aside className="sticky top-24">
         <form onSubmit={onSubmit} className="overflow-hidden rounded-[2.5rem] bg-white border border-slate-100 shadow-xl shadow-slate-200/60">
           <div className={`p-6 border-b ${registryEditingId ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-100'}`}>
@@ -193,7 +192,6 @@ export default function AdminRegistryView({
         </form>
       </aside>
 
-      {/* ДЯСНА КОЛОНА: СПИСЪК КЛИЕНТИ */}
       <main className="space-y-6">
         <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 shadow-sm">
           <div className="mb-8 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
