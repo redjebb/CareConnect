@@ -7,7 +7,9 @@ export type GeoLocation = {
 
 export type CompleteDeliveryPayload = {
   clientId: string;
+  clientName: string;
   driverId: string;
+  driverName: string;
   startLocation: GeoLocation;
   endLocation: GeoLocation;
   timestamp?: Date;
@@ -16,6 +18,8 @@ export type CompleteDeliveryPayload = {
   status?: 'success' | 'issue';
   issueType?: string;
   issueDescription?: string;
+  driverSignature?: string;
+  clientSignature?: string;
 };
 
 const toRadians = (degrees: number) => (degrees * Math.PI) / 180;

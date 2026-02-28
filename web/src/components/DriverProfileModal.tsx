@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import { X, MapPin, Phone, Mail, Package, AlertTriangle, CheckCircle, FileText, Printer, ArrowLeft, Clock, BarChart3 } from 'lucide-react';
+import { X, MapPin, Phone, Mail, Package, AlertTriangle, CheckCircle, FileText, Printer, ArrowLeft, Clock, BarChart3, PenTool } from 'lucide-react';
+import SignatureViewerModal from '../components/SignatureViewerModal';
 
 interface DriverProfileModalProps {
   isOpen: boolean;
@@ -18,6 +19,9 @@ export default function DriverProfileModal({ isOpen, onClose, driver }: DriverPr
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+
+  // State за подписите
+  const [previewSignatures, setPreviewSignatures] = useState<{clientName: string, driver: string, client: string} | null>(null);
 
   const [stats, setStats] = useState({
     dailySuccess: 0,
@@ -54,7 +58,7 @@ export default function DriverProfileModal({ isOpen, onClose, driver }: DriverPr
       const qDeliveries = query(
         collection(db, 'deliveryHistory'), 
         where('driverId', '==', driver.id), 
-        orderBy('timestamp', 'desc')
+        orderBy('timestamp', 'desc') 
       );
       const qShifts = query(
         collection(db, 'shifts'), 
@@ -169,7 +173,7 @@ export default function DriverProfileModal({ isOpen, onClose, driver }: DriverPr
           </div>
           <table>
             <thead><tr><th>Час</th><th>Клиент</th><th>Меню</th><th>Брой</th><th>Статус</th></tr></thead>
-            <tbody>${reportData.map(item => `<tr><td>${item.timestamp?.toDate().toLocaleTimeString('bg-BG', {hour:'2-digit', minute:'2-digit'})}</td><td>${item.clientName}</td><td>${item.mealType || '---'}</td><td>${item.mealCount || 1}</td><td class="${item.status === 'success' ? 'status-success' : 'status-issue'}">${item.status === 'success' ? 'ДОСТАВЕНО' : 'ПРОБЛЕМ'}</td></tr>`).join('')}</tbody>
+            <<tbody>${reportData.map(item => `<tr><td>${item.timestamp?.toDate().toLocaleTimeString('bg-BG', {hour:'2-digit', minute:'2-digit'})}</td><td>${item.clientName}</td><td>${item.mealType || '---'}</td><td>${item.mealCount || 1}</td><td class="${item.status === 'success' ? 'status-success' : 'status-issue'}">${item.status === 'success' ? 'ДОСТАВЕНО' : 'ПРОБЛЕМ'}</td></tr>`).join('')}</tbody>
           </table>
         </body>
       </html>
@@ -226,7 +230,6 @@ export default function DriverProfileModal({ isOpen, onClose, driver }: DriverPr
         <div className="flex-1 overflow-y-auto p-6 space-y-6 text-slate-900">
           {!previewType ? (
             <>
-              {/* СТАТИСТИКА КВАДРАТЧЕТА */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-center">
                   <p className="text-[10px] text-emerald-600 font-bold uppercase mb-1">Днес Успешни</p>
@@ -246,7 +249,6 @@ export default function DriverProfileModal({ isOpen, onClose, driver }: DriverPr
                 </div>
               </div>
 
-              {/* ЦВЕТНА ДИАГРАМА */}
               <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 shadow-inner">
                 <div className="flex items-center justify-between mb-8">
                   <div className="flex items-center gap-2">
@@ -283,7 +285,6 @@ export default function DriverProfileModal({ isOpen, onClose, driver }: DriverPr
                 </div>
               </div>
 
-              {/* ИСТОРИЯ С ФИКСИРАНА ИКОНА ЗА ПРОБЛЕМ */}
               <div>
                 <h3 className="text-md font-bold text-slate-900 mb-4 flex items-center gap-2"><Package className="w-5 h-5 text-slate-400" /> Последна активност (14 дни)</h3>
                 {loading ? <div className="text-center py-10 italic text-slate-400">Зареждане...</div> : (
@@ -292,27 +293,52 @@ export default function DriverProfileModal({ isOpen, onClose, driver }: DriverPr
                       const d = item.timestamp?.toDate();
                       const limit = new Date(); limit.setDate(limit.getDate() - 14);
                       return d >= limit;
-                    }).slice(0, 10).map(item => (
-                      <div key={item.id} className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 bg-white shadow-sm">
-                        <div className="flex items-center gap-4">
-                          <div className={`p-2 rounded-xl ${item.status === 'success' ? 'bg-emerald-50' : 'bg-red-50'}`}>
-                            {item.status === 'success' ? (
-                              <CheckCircle className="w-5 h-5 text-emerald-500" />
-                            ) : (
-                              <X className="w-5 h-5 text-red-500" />
+                    }).slice(0, 10).map(item => {
+                      const hasSignatures = !!(item.driverSignature || item.clientSignature);
+
+                      return (
+                        <div key={item.id} className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 bg-white shadow-sm transition-all">
+                          <div className="flex items-center gap-4">
+                            <div className={`p-2 rounded-xl ${item.status === 'success' ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                              {item.status === 'success' ? (
+                                <CheckCircle className="w-5 h-5 text-emerald-500" />
+                              ) : (
+                                <X className="w-5 h-5 text-red-500" />
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold">{item.clientName || 'Клиент'} — {item.mealType}</p>
+                              <p className="text-[11px] text-slate-400">{item.timestamp?.toDate().toLocaleString('bg-BG')}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex flex-col items-end gap-2">
+                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${item.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                              {item.status === 'success' ? 'ДОСТАВЕНО' : 'ПРОБЛЕМ'}
+                            </span>
+                            
+                            {item.status === 'success' && hasSignatures && (
+                              <button 
+                                onClick={() => setPreviewSignatures({ 
+                                  clientName: item.clientName || 'Клиент',
+                                  driver: item.driverSignature || '', 
+                                  client: item.clientSignature || '' 
+                                })}
+                                className="flex items-center gap-1.5 text-[10px] font-bold text-blue-600 hover:text-blue-800 transition-colors px-2 py-1 rounded-md hover:bg-blue-50"
+                              >
+                                <PenTool className="w-3 h-3" />
+                                Подписи
+                              </button>
                             )}
                           </div>
-                          <div><p className="text-sm font-bold">{item.clientName || 'Клиент'} — {item.mealType}</p><p className="text-[11px] text-slate-400">{item.timestamp?.toDate().toLocaleString('bg-BG')}</p></div>
                         </div>
-                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${item.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{item.status === 'success' ? 'ДОСТАВЕНО' : 'ПРОБЛЕМ'}</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
             </>
           ) : (
-            /* ТАБЛИЦА ПРЕГЛЕД */
             <div className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden shadow-inner">
               <table className="min-w-full divide-y divide-slate-200 text-sm">
                 <thead className="bg-slate-100"><tr><th className="px-4 py-3 font-bold text-slate-700 text-left">Дата/Час</th><th className="px-4 py-3 font-bold text-slate-700 text-left">Клиент</th><th className="px-4 py-3 font-bold text-slate-700 text-center">Порции</th><th className="px-4 py-3 font-bold text-slate-700 text-center">Статус</th></tr></thead>
@@ -328,6 +354,15 @@ export default function DriverProfileModal({ isOpen, onClose, driver }: DriverPr
           )}
         </div>
       </div>
+
+      <SignatureViewerModal
+        isOpen={!!previewSignatures}
+        onClose={() => setPreviewSignatures(null)}
+        clientName={previewSignatures?.clientName || ''}
+        driver={previewSignatures?.driver || ''}
+        client={previewSignatures?.client || ''}
+      />
+
     </div>
   );
 }

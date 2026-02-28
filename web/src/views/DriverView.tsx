@@ -603,17 +603,19 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         'Доставено и подписано от двете страни'
       );
 
-      // ВНИМАНИЕ: Тук добавяме clientName
       await completeDelivery({
         clientId: clientId,
         clientName: targetClient?.name || '---',
         egn: targetClient?.egn || 'N/A',
         driverId: currentDriver.id,
+        driverName: currentDriver.name,
         startLocation: currentPosition || { lat: 0, lng: 0 },
         endLocation: clientCoords || { lat: 0, lng: 0 },
         timestamp: new Date(),
         mealType: (targetClient as any)?.mealType || 'Стандартно меню',
-        mealCount: Number((targetClient as any)?.mealCount) || 1
+        mealCount: Number((targetClient as any)?.mealCount) || 1,
+        driverSignature: driverSig, 
+        clientSignature: clientSig  
       } as any);
 
       console.log('Delivery history record successfully created for client:', clientId);
@@ -754,101 +756,44 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         console.log("✅ Смяната е приключена в Firestore");
       }
 
-      // 2. Изчисляваме статистиката за крайния модал (Summary)
       const endTime = new Date().toISOString();
       const duration = shiftStartTime ? formatDuration(shiftStartTime) : '—';
 
-      const shiftStartDate = shiftStartTime ? new Date(shiftStartTime) : null;
-      const shiftEndDate = new Date(endTime);
-
-      const getDeliveryTimestamp = (lastCheckIn: string | undefined): Date | null => {
-        if (!lastCheckIn) return null;
-        const trimmed = lastCheckIn.trim();
+      const distanceDuringShift = (optimizedTodayVisitsWithMeta ?? []).reduce((total, visit) => {
+        if (!visit?.client) return total;
         
-        const isoMatch = trimmed.match(/\d{4}-\d{2}-\d{2}T[^\s]+/);
-        if (isoMatch) {
-          const parsed = new Date(isoMatch[0]);
-          return Number.isNaN(parsed.getTime()) ? null : parsed;
-        }
-        
-        const parsed = new Date(trimmed);
-        return Number.isNaN(parsed.getTime()) ? null : parsed;
-      };
-
-      // Филтрираме задачите, направени по време на тази смяна
-      const entriesDuringShift = (todayVisits ?? []).filter(visit => {
-        if (!visit?.client) return false;
-        
-        const hasEntry = Boolean(
+        const isDelivered = Boolean(
           visit.client.clientSignature ||
           visit.client.lastSignature ||
           visit.client.driverSignature ||
           visit.client.lastCheckIn?.trim()
         );
-        
-        if (!hasEntry) return false;
+        const hasIssue = isIssueEntry(visit.client.lastCheckIn);
 
-        const entryTime = getDeliveryTimestamp(visit.client.lastCheckIn);
-        
-        if (!entryTime) return false;
-        if (!shiftStartDate) return false;
-        
-        return entryTime >= shiftStartDate && entryTime <= shiftEndDate;
-      });
-
-      const deliveredDuringShift = entriesDuringShift.filter(visit => 
-        !isIssueEntry(visit.client.lastCheckIn)
-      ).length;
-
-      const issuesDuringShift = entriesDuringShift.filter(visit => 
-        isIssueEntry(visit.client.lastCheckIn)
-      ).length;
-
-      const deliveredClientIds = new Set(
-        entriesDuringShift
-          .filter(visit => !isIssueEntry(visit.client.lastCheckIn))
-          .map(v => v.client.id)
-      );
-      
-      const distanceDuringShift = (optimizedTodayVisitsWithMeta ?? []).reduce((total, visit) => {
-        if (!visit?.client) return total;
-        if (!deliveredClientIds.has(visit.client.id)) return total;
-        if (visit.distanceFromPreviousKm) {
+        if (isDelivered && !hasIssue && visit.distanceFromPreviousKm) {
           return total + visit.distanceFromPreviousKm;
         }
         return total;
       }, 0);
 
-      const remainingPending = (todayVisits ?? []).filter(visit => {
-        if (!visit?.client) return false;
-        return !Boolean(
-          visit.client.clientSignature ||
-          visit.client.lastSignature ||
-          visit.client.driverSignature ||
-          visit.client.lastCheckIn?.trim()
-        );
-      }).length;
-
-      // 3. Подготвяме данните за показване в модала
       setShiftSummary({
         startTime: shiftStartTime || endTime,
         endTime,
         duration,
-        deliveredCount: deliveredDuringShift,
-        issueCount: issuesDuringShift,
-        pendingCount: remainingPending,
+        deliveredCount: actualDeliveredTodayCount,
+        issueCount: issueTodayCount,             
+        pendingCount: pendingTodayCount,         
         totalDistanceKm: Math.round(distanceDuringShift * 10) / 10
       });
 
-      // 4. Сменяме модалите
       setShowEndShiftModal(false);
       setShowSummaryModal(true);
 
     } catch (err: any) {
-  console.error('Грешка при завършване на смяна:', err); 
-  showNotification(getFriendlyErrorMessage(err.code || err.message), 'error');
-}
-  }; 
+      console.error('Грешка при завършване на смяна:', err); 
+      showNotification(getFriendlyErrorMessage(err.code || err.message), 'error');
+    }
+  };
 
   const handleConfirmSummary = () => {
     try {

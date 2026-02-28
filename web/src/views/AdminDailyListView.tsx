@@ -89,6 +89,53 @@ export default function AdminDailyListView({
     return null;
   };
 
+  const formatReportText = (text: string) => {
+    if (!text) return '';
+
+    let formattedText = text
+      .replace('INCIDENT:', 'СИГНАЛ ЗА ПРОБЛЕМ:')
+      .replace('Доставено и подписано от двете страни', 'Успешно предадена и подписана храна');
+
+    const isoMatch = formattedText.match(/\d{4}-\d{2}-\d{2}T[^\s]+/);
+    
+    if (isoMatch) {
+      const dateStr = isoMatch[0];
+      const dateObj = new Date(dateStr);
+      
+      if (!Number.isNaN(dateObj.getTime())) {
+        const date = dateObj.toLocaleString('bg-BG', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        
+        formattedText = formattedText.replace(dateStr, `(${date} ч.)`);
+      }
+    }
+
+    return formattedText;
+  };
+
+  const getStatsDateLabel = (date: Date) => {
+    const today = new Date();
+    const isToday = 
+      date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear();
+
+    if (isToday) {
+      return 'Днес';
+    }
+    
+    return `за ${date.toLocaleDateString('bg-BG', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric' 
+    })}`;
+  };
+
   const handleCardClick = (client: ClientWithSchedule) => {
   if (client.egn && onViewProfile) {
     const registryEntry: ClientRegistryEntry = {
@@ -122,7 +169,7 @@ export default function AdminDailyListView({
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       
-      {/* 1. СТАТИСТИКА */}
+     {/* 1. СТАТИСТИКА */}
       <section className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         {[
           { label: 'Клиенти', val: totalClientsToday, icon: <Users />, color: 'text-blue-500', bg: 'bg-blue-50/50', border: 'border-blue-100' },
@@ -133,7 +180,10 @@ export default function AdminDailyListView({
           <div key={i} className={`rounded-[2rem] bg-white p-5 border ${s.border} shadow-sm transition-all hover:shadow-md`}>
             <div className="flex items-center justify-between">
               <div className={`p-2 rounded-xl ${s.bg} ${s.color} ${s.pulse ? 'animate-pulse' : ''}`}>{s.icon}</div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Днес</span>
+              {/* ТУК Е ПРОМЯНАТА: */}
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                {getStatsDateLabel(selectedDate)}
+              </span>
             </div>
             <p className="mt-4 text-3xl font-black text-slate-900">{s.val}</p>
             <p className="text-xs font-bold text-slate-500 mt-0.5">{s.label}</p>
@@ -267,13 +317,10 @@ export default function AdminDailyListView({
                     </div>
                   </div>
 
-                  {/* Текст на отчета */}
                   {client.lastCheckIn && (
                     <div className="rounded-xl border border-slate-100 bg-slate-50/30 p-3 mt-2">
                       <p className="text-[11px] font-medium text-slate-500 leading-relaxed italic">
-                        {client.lastCheckIn
-                          .replace('INCIDENT:', 'СИГНАЛ ЗА ПРОБЛЕМ:')
-                          .replace('Доставено и подписано от двете страни', 'Успешно предадена и подписана храна')}
+                        {formatReportText(client.lastCheckIn)}
                       </p>
                     </div>
                   )}
