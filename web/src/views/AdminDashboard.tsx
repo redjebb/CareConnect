@@ -46,7 +46,7 @@
   };
 
   export default function AdminDashboard({ userEmail, isMasterAdmin, onLogout }: AdminDashboardProps) {
-    const adminData = useAdminData(isMasterAdmin);
+    const adminData = useAdminData(isMasterAdmin, userEmail);
     const [invitations, setInvitations] = useState<any[]>([]);
     const [isPrinting, setIsPrinting] = useState(false); // <--- Ново състояние
 

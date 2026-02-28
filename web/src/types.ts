@@ -43,6 +43,7 @@ export interface ScheduleItem {
     driverId: string;
     date: string; // ISO string for the date of service
     notes: string;
+    assignedByAdminEmail?: string;
 }
 
 export interface Incident {

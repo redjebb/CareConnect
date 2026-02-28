@@ -6,20 +6,38 @@ interface ArcGisSuggestion {
   text?: string;
 }
 
+// 1. Модифицирана функция за предложения с фокус върху основните градове
 const fetchArcGisSuggestions = async (query: string) => {
+  // Увеличаваме maxSuggestions на 15, за да имаме повече материал за филтриране
   const url = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/suggest?text=${encodeURIComponent(
     query
-  )}&f=json&countryCode=BGR&maxSuggestions=5`;
+  )}&f=json&countryCode=BGR&maxSuggestions=15`;
 
   const response = await fetch(url);
   if (!response.ok) return [];
 
   const payload = (await response.json()) as { suggestions?: ArcGisSuggestion[] };
   const suggestions = Array.isArray(payload.suggestions) ? payload.suggestions : [];
-  return suggestions
-    .map(item => item.text?.trim() ?? '')
-    .filter(Boolean)
-    .slice(0, 5);
+  
+  const mapped = suggestions.map(item => item.text?.trim() ?? '').filter(Boolean);
+
+  // СТРИКТНО ФИЛТРИРАНЕ: Оставяме САМО адреси, които съдържат някой от градовете
+  const allowedCities = ['софия', 'пловдив', 'варна', 'sofia', 'plovdiv', 'varna'];
+  
+  const filtered = mapped.filter(address => {
+    const lowerAddress = address.toLowerCase();
+    return allowedCities.some(city => lowerAddress.includes(city));
+  });
+
+  // Допълнително сортиране, за да е сигурно, че ако потребителят е започнал с името на града, той е най-отгоре
+  return filtered.sort((a, b) => {
+    // Ако адресът започва с града, дай му предимство
+    const aStartsWithCity = allowedCities.some(city => a.toLowerCase().startsWith(city));
+    const bStartsWithCity = allowedCities.some(city => b.toLowerCase().startsWith(city));
+    if (aStartsWithCity && !bStartsWithCity) return -1;
+    if (!aStartsWithCity && bStartsWithCity) return 1;
+    return 0;
+  }).slice(0, 5); // Връщаме само топ 5 чисти резултата
 };
 
 interface ClientFormState {
@@ -120,7 +138,6 @@ export default function ClientForm({
       }} 
       className="flex flex-col h-full bg-white sm:rounded-3xl shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-100"
     >
-      {/* Header */}
       <div className="bg-slate-50/80 p-6 border-b border-slate-100">
         <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
           <User className="w-6 h-6 text-blue-600" /> Добавяне на клиент
@@ -130,7 +147,7 @@ export default function ClientForm({
 
       <div className="flex-1 p-6 space-y-8 overflow-y-auto">
         
-        {/* 1. Умно търсене */}
+        {/* 1. Търсене в регистър */}
         <div className="relative group">
           <label className={labelClasses}><Search className="w-3.5 h-3.5" /> Бързо търсене в регистър</label>
           <div className="relative">
@@ -142,7 +159,6 @@ export default function ClientForm({
               placeholder="Търсене по ЕГН или Име..."
             />
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-400" />
-            
             {selectedRegistryEntryId && (
               <button 
                 type="button" 
@@ -153,7 +169,6 @@ export default function ClientForm({
               </button>
             )}
           </div>
-
           {registrySearch.trim() && registrySuggestions.length > 0 && (
             <div className="absolute z-50 mt-2 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in fade-in slide-in-from-top-2">
               {registrySuggestions.map(entry => (
@@ -215,7 +230,7 @@ export default function ClientForm({
           </div>
         </div>
 
-        {/* 3. Адресна информация */}
+        {/* 3. Адресна информация с AUTO-SELECT логика */}
         <div className="relative">
           <label className={labelClasses}><MapPin className="w-3.5 h-3.5" /> Точен адрес</label>
           <div className="relative">
@@ -230,15 +245,28 @@ export default function ClientForm({
               }}
               onFocus={() => setShowAddressSuggestions(true)}
               onBlur={() => {
+                // 2. Логика за автоматично избиране на първия адрес
                 window.setTimeout(() => {
-                  setShowAddressSuggestions(false);
-                  const normalized = clientForm.address.trim();
-                  if (normalized && (!selectedAddress || normalized !== selectedAddress)) {
+                  const currentVal = clientForm.address.trim();
+                  
+                  // Ако има предложения и нищо не е потвърдено още
+                  if (currentVal && !isAddressVerified && addressSuggestions.length > 0) {
+                    handleSelectAddress(addressSuggestions[0]);
+                  } 
+                  // Ако е извън списъка и не е празно
+                  else if (currentVal && !isAddressVerified) {
                     onClientInputChange('address', '');
                     setIsAddressVerified(false);
                     setAddressWarning('Моля, изберете валиден адрес от списъка.');
                   }
-                }, 200);
+                  setShowAddressSuggestions(false);
+                }, 300);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && addressSuggestions.length > 0 && !isAddressVerified) {
+                  e.preventDefault();
+                  handleSelectAddress(addressSuggestions[0]);
+                }
               }}
               className={`${inputClasses} ${addressHighlight ? 'ring-2 ring-emerald-400' : ''}`}
               placeholder="Започнете да пишете адрес..."
@@ -248,15 +276,15 @@ export default function ClientForm({
           
           {showAddressSuggestions && addressSuggestions.length > 0 && (
             <ul className="absolute z-50 mt-2 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-              {addressSuggestions.map(s => (
+              {addressSuggestions.map((s, idx) => (
                 <li key={s}>
                   <button
                     type="button"
                     onMouseDown={e => e.preventDefault()}
                     onClick={() => handleSelectAddress(s)}
-                    className="w-full px-5 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"
+                    className={`w-full px-5 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 ${idx === 0 ? 'bg-blue-50/30' : ''}`}
                   >
-                    <MapPin className="w-4 h-4 text-slate-400" /> {s}
+                    <MapPin className={`w-4 h-4 ${idx === 0 ? 'text-blue-500' : 'text-slate-400'}`} /> {s}
                   </button>
                 </li>
               ))}
@@ -268,82 +296,75 @@ export default function ClientForm({
         {/* 4. Настройки на доставка */}
         <div className="space-y-6 pt-4 border-t border-slate-100">
            <div className="grid gap-6 sm:grid-cols-2">
-              <div>
-                <label className={labelClasses}><Calendar className="w-3.5 h-3.5" /> Дата на доставка</label>
-                <input
-                  type="date"
-                  value={clientForm.serviceDate}
-                  onChange={e => onClientInputChange('serviceDate', e.target.value)}
-                  className={inputClasses}
-                />
-              </div>
-              <div>
-                <label className={labelClasses}><Utensils className="w-3.5 h-3.5" /> Вид меню</label>
-                <select
-                  value={clientForm.mealType}
-                  onChange={e => onClientInputChange('mealType', e.target.value)}
-                  className={inputClasses}
-                  required
-                >
-                  <option value="Стандартно меню">Стандартно меню</option>
-                  <option value="Диетично меню">Диетично меню</option>
-                  <option value="Вегетарианско">Вегетарианско</option>
-                  <option value="Само хляб">Само хляб</option>
-                </select>
-              </div>
+             <div>
+               <label className={labelClasses}><Calendar className="w-3.5 h-3.5" /> Дата на доставка</label>
+               <input
+                 type="date"
+                 value={clientForm.serviceDate}
+                 onChange={e => onClientInputChange('serviceDate', e.target.value)}
+                 className={inputClasses}
+               />
+             </div>
+             <div>
+               <label className={labelClasses}><Utensils className="w-3.5 h-3.5" /> Вид меню</label>
+               <select
+                 value={clientForm.mealType}
+                 onChange={e => onClientInputChange('mealType', e.target.value)}
+                 className={inputClasses}
+                 required
+               >
+                 <option value="Стандартно меню">Стандартно меню</option>
+                 <option value="Диетично меню">Диетично меню</option>
+                 <option value="Вегетарианско">Вегетарианско</option>
+                 <option value="Само хляб">Само хляб</option>
+               </select>
+             </div>
            </div>
 
            <div className="grid gap-6 sm:grid-cols-3">
-              <div className="sm:col-span-1">
-                <label className={labelClasses}>Брой порции</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={clientForm.mealCount}
-                  onChange={e => onClientInputChange('mealCount', e.target.value)}
-                  className={inputClasses}
-                  required
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className={labelClasses}><Truck className="w-3.5 h-3.5" /> Назначен шофьор</label>
-                <select
-                  value={clientForm.assignedDriverId}
-                  onChange={e => onClientInputChange('assignedDriverId', e.target.value)}
-                  disabled={driversLoading}
-                  className={inputClasses}
-                >
-                  <option value="">Изберете шофьор...</option>
-                  {drivers.map(d => (
-                    <option key={d.id} value={d.id}>{d.name} ({d.routeArea})</option>
-                  ))}
-                </select>
-              </div>
+             <div className="sm:col-span-1">
+               <label className={labelClasses}>Брой порции</label>
+               <input
+                 type="number"
+                 min={1}
+                 value={clientForm.mealCount}
+                 onChange={e => onClientInputChange('mealCount', e.target.value)}
+                 className={inputClasses}
+                 required
+               />
+             </div>
+             <div className="sm:col-span-2">
+               <label className={labelClasses}><Truck className="w-3.5 h-3.5" /> Назначен шофьор</label>
+               <select
+                 value={clientForm.assignedDriverId}
+                 onChange={e => onClientInputChange('assignedDriverId', e.target.value)}
+                 disabled={driversLoading}
+                 className={inputClasses}
+               >
+                 <option value="">Изберете шофьор...</option>
+                 {drivers.map(d => (
+                   <option key={d.id} value={d.id}>{d.name} ({d.routeArea})</option>
+                 ))}
+               </select>
+             </div>
            </div>
 
            <div>
-              <label className={labelClasses}><ClipboardList className="w-3.5 h-3.5" /> Бележки и изисквания</label>
-              <textarea
-                value={clientForm.notes}
-                onChange={e => onClientInputChange('notes', e.target.value)}
-                className={`${inputClasses} min-h-[100px] resize-none`}
-                placeholder="Специфични изисквания, диета или детайли за достъп..."
-              />
+             <label className={labelClasses}><ClipboardList className="w-3.5 h-3.5" /> Бележки и изисквания</label>
+             <textarea
+               value={clientForm.notes}
+               onChange={e => onClientInputChange('notes', e.target.value)}
+               className={`${inputClasses} min-h-[100px] resize-none`}
+               placeholder="Специфични изисквания, диета или детайли за достъп..."
+             />
            </div>
         </div>
       </div>
 
-      {/* Footer Buttons */}
       <div className="p-6 bg-slate-50 border-t border-slate-100 grid gap-3 sm:grid-cols-2">
         <button
           type="button"
-          onClick={() => {
-            if (!isAddressVerified) {
-              setAddressWarning('Моля, изберете валиден адрес от предложенията.');
-              return;
-            }
-            onAddForToday();
-          }}
+          onClick={onAddForToday}
           disabled={clientSubmitting}
           className="rounded-2xl bg-emerald-600 px-6 py-4 font-bold text-white shadow-lg shadow-emerald-200 hover:bg-emerald-500 hover:-translate-y-0.5 transition-all active:scale-95 disabled:opacity-50"
         >
@@ -364,14 +385,5 @@ export default function ClientForm({
         </div>
       )}
     </form>
-  );
-}
-
-function CheckCircle({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-      <polyline points="22 4 12 14.01 9 11.01"></polyline>
-    </svg>
   );
 }

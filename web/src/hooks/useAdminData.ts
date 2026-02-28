@@ -99,7 +99,7 @@ const fetchPhotonSuggestions = async (query: string) => {
     .slice(0, 5);
 };
 
-export function useAdminData(isMasterAdmin: boolean) {
+export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) {
   const { showNotification } = useNotification();
 
   const isValidEgn = (egn: string) => /^\d{10}$/.test(egn.trim());
@@ -646,7 +646,8 @@ export function useAdminData(isMasterAdmin: boolean) {
       await addScheduleItem({
         clientId,
         driverId: clientForm.assignedDriverId,
-        date: clientForm.serviceDate
+        date: clientForm.serviceDate,
+        assignedByAdminEmail: currentAdminEmail
       });
 
       setClientForm({
@@ -728,7 +729,8 @@ export function useAdminData(isMasterAdmin: boolean) {
       await addScheduleItem({
         clientId,
         driverId: clientForm.assignedDriverId,
-        date: nextDateValue
+        date: nextDateValue,
+        assignedByAdminEmail: currentAdminEmail
       });
 
       setClientForm({

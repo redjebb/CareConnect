@@ -24,6 +24,7 @@ export interface ScheduleItemInput {
   clientId: string;
   driverId: string;
   date: string;
+  assignedByAdminEmail?: string;
 }
 
 export async function addScheduleItem(item: ScheduleItemInput): Promise<string> {
@@ -45,7 +46,8 @@ export async function getScheduleItems(): Promise<ScheduleItem[]> {
       id: docSnapshot.id,
       ...data,
       date: normalizedDate,
-      notes: data.notes ?? ''
+      notes: data.notes ?? '',
+      assignedByAdminEmail: data.assignedByAdminEmail || ''
     };
   });
 }

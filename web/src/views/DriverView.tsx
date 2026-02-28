@@ -33,6 +33,7 @@ import { getFriendlyErrorMessage } from '../services/authService';
 import { useOnlineStatus } from '../hooks/useOnlineStatus'; 
 import { WifiOff, CloudOff, Wifi } from 'lucide-react';
 import { useNotification } from '../components/NotificationProvider';
+import emailjs from '@emailjs/browser';
 
 type DriverVisit = {
   client: Client;
@@ -686,6 +687,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
       try {
         const incidentTimestamp = new Date().toISOString();
 
+        // 1. Запис в базата данни (Инциденти)
         await addIncident({
           clientId: incidentClient.id,
           driverId: currentDriver.id,
@@ -693,11 +695,13 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
           description
         });
 
+        // 2. Запис в историята на доставките (като Проблем)
         await completeDelivery({
           clientId: incidentClient.id,
           clientName: incidentClient.name || '---',
           egn: incidentClient?.egn || 'N/A',
           driverId: currentDriver.id,
+          driverName: currentDriver.name, // Записваме и името на шофьора тук за пълнота!
           startLocation: currentPosition || { lat: 0, lng: 0 },
           endLocation: geoCache[getAddressKey(incidentClient?.address || '')] || { lat: 0, lng: 0 },
           timestamp: new Date(),
@@ -708,10 +712,54 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
           issueDescription: description
         } as any);
 
+        // 3. Обновяване на статуса на клиента за деня
         await updateClientLastCheckIn(
           incidentClient.id,
           `INCIDENT: ${incidentType} ${incidentTimestamp}`
         );
+
+        // ==========================================
+// 4. ИЗПРАЩАНЕ НА ИМЕЙЛ ДО ОТГОВОРНИЯ АДМИН
+// ==========================================
+
+// Намираме графика за този клиент. 
+// Тъй като шофьорът вижда само задачи за днес/утре, 
+// филтрираме само по clientId, за да сме сигурни, че ще вземем записа.
+const todaysScheduleForClient = scheduleItems.find(item => 
+  item.clientId === incidentClient.id && 
+  item.driverId === currentDriver.id // добавяме и проверка за шофьора за сигурност
+);
+
+// Вземаме имейла на админа
+const targetAdminEmail = todaysScheduleForClient?.assignedByAdminEmail;
+
+if (targetAdminEmail) {
+  const templateParams = {
+    admin_email: targetAdminEmail,
+    driver_name: currentDriver.name,
+    client_name: incidentClient.name,
+    client_address: incidentClient.address,
+    issue_type: incidentType,
+    issue_desc: description || 'Няма допълнително описание.',
+    time: new Date().toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' })
+  };
+
+  try {
+    await emailjs.send(
+      'service_dkng7ol', 
+      'template_o1iokwt',
+      templateParams,
+      'ikmstn4Jj0VVM1gWD'
+    );
+    console.log("✅ SOS Имейлът до админа (" + targetAdminEmail + ") е изпратен успешно!");
+  } catch (emailErr) {
+    console.error("❌ Грешка при изпращане на имейл чрез EmailJS:", emailErr);
+  }
+} else {
+  // Ако пак влезе тук, ще ни изпише за кой клиент става въпрос, за да дебъгнем по-лесно
+  console.warn(`⚠️ Не е намерен админ имейл в обекта за клиент: ${incidentClient.name}. Обектът от базата е:`, todaysScheduleForClient);
+}
+        // ==========================================
 
         await handleIncidentReportSuccess();
         showNotification('Сигналът е изпратен успешно!', 'success');
@@ -720,9 +768,9 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         console.error('Грешка при изпращане на сигнал:', err);
         const friendlyMessage = getFriendlyErrorMessage(err.code || err.message);
         showNotification(friendlyMessage, 'error');
-}
+      }
     },
-    [incidentClient, currentDriver?.id, handleIncidentReportSuccess, isShiftActive, currentPosition, geoCache]
+    [incidentClient, currentDriver?.id, currentDriver?.name, handleIncidentReportSuccess, isShiftActive, currentPosition, geoCache, scheduleItems]
   );
 
   const handleStartShift = async () => { 
