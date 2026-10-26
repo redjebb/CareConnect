@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ClientHistoryEntry, ClientRegistryEntry } from '../types';
 import { getClientMonthlyReport } from '../services/reportService';
-import { X, User, MapPin, Phone, Calendar, Printer, PlusCircle, AlertCircle, Clock, ChevronRight, PenTool } from 'lucide-react';
+import { erasePersonData, exportPersonData } from '../services/gdprService';
+import { saveAs } from 'file-saver';
+import { X, User, MapPin, Phone, Calendar, Printer, Download, Trash2, PlusCircle, AlertCircle, Clock, ChevronRight, PenTool } from 'lucide-react';
 import SignatureViewerModal from './SignatureViewerModal';
 import { useNotification } from './NotificationProvider';
 
@@ -13,6 +15,7 @@ interface UserProfileModalProps {
   errorMessage: string | null;
   onClose: () => void;
   onQuickSchedule?: (entry: ClientRegistryEntry) => void; 
+  onErased?: () => void;
 }
 
 type MonthlyDeliveryData = {
@@ -59,9 +62,43 @@ export default function UserProfileModal({
   isLoading,
   errorMessage,
   onClose,
-  onQuickSchedule
+  onQuickSchedule,
+  onErased
 }: UserProfileModalProps) {
   const { showNotification } = useNotification();
+  const [gdprBusy, setGdprBusy] = useState(false);
+
+  const handleExportData = async () => {
+    if (!entry) return;
+    setGdprBusy(true);
+    try {
+      const data = await exportPersonData(entry.id, entry.egn);
+      saveAs(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `careconnect-${entry.egn}.json`);
+    } catch {
+      showNotification('Неуспешен експорт на данните.', 'error');
+    } finally {
+      setGdprBusy(false);
+    }
+  };
+
+  const handleEraseData = async () => {
+    if (!entry) return;
+    const confirmed = window.confirm(
+      `Окончателно изтриване на ${entry.name} и на всички свързани посещения, доставки и сигнали? Действието не може да бъде отменено.`
+    );
+    if (!confirmed) return;
+    setGdprBusy(true);
+    try {
+      const count = await erasePersonData(entry.id, entry.egn);
+      showNotification(`Изтрити са ${count} записа.`, 'success');
+      onErased?.();
+      onClose();
+    } catch {
+      showNotification('Неуспешно изтриване на данните.', 'error');
+    } finally {
+      setGdprBusy(false);
+    }
+  };
   const [reportDate, setReportDate] = useState(new Date());
   const [currentMonthData, setCurrentMonthData] = useState<MonthlyDeliveryData[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
@@ -304,6 +341,24 @@ export default function UserProfileModal({
                 >
                   <Printer className="w-4 h-4" /> Печат на отчет
                 </button>
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    disabled={gdprBusy}
+                    onClick={() => void handleExportData()}
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-3 text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Експорт
+                  </button>
+                  <button
+                    type="button"
+                    disabled={gdprBusy}
+                    onClick={() => void handleEraseData()}
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-red-200 py-3 text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Изтрий данни
+                  </button>
+                </div>
               </div>
             </aside>
 

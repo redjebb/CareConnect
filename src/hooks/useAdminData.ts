@@ -484,6 +484,8 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
     });
   };
 
+  const refreshAll = () => Promise.all([fetchClients(), fetchScheduleItems(), fetchRegistryEntries()]);
+
   const handleRemoveRegistryEntry = async (entryId: string) => {
     if (!entryId) return;
     
@@ -1007,6 +1009,7 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
     handleSubmitRegistryEntry,
     handleEditRegistryEntry,
     handleRemoveRegistryEntry,
+    refreshAll,
     applyRegistrySelection,
     handleSelectRegistryAddressSuggestion,
 

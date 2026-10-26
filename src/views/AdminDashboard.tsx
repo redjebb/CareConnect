@@ -73,7 +73,7 @@
       handleAddClient, handleAddClientForSelectedDate, clientsLoading, clientDeletingId, reportGenerating, handleGenerateMonthlyReport, handleDeleteClient,
       registryForm, registryEditingId, registrySubmitting, registryError, sortedRegistryEntries, registryLoading, registryDeletingId,
       registryAddressSuggestions, showRegistryAddressSuggestions, setShowRegistryAddressSuggestions,
-      handleSelectRegistryAddressSuggestion, handleRegistryInputChange, handleSubmitRegistryEntry, resetRegistryForm, handleEditRegistryEntry, handleRemoveRegistryEntry, handleOpenProfile,
+      handleSelectRegistryAddressSuggestion, handleRegistryInputChange, handleSubmitRegistryEntry, resetRegistryForm, handleEditRegistryEntry, handleRemoveRegistryEntry, refreshAll, handleOpenProfile,
       driversError, driverSubmitting, driverDeletingId, driverForm, handleDriverInputChange, handleDriverCityChange, handleAddDriver, handleDeleteDriver,
       admins, adminsLoading, adminsError, adminSubmitting, adminDeletingId, adminForm, handleAdminInputChange, handleAddAdmin, handleDeleteAdmin,
       profileSearch, setProfileSearch, isProfileSearchOpen, setIsProfileSearchOpen, profileSearchResults, handleSelectProfileSearch
@@ -415,6 +415,7 @@
               isLoading={profileLoading}
               errorMessage={translatedProfileError}
               onClose={handleCloseProfile}
+              onErased={() => void refreshAll()}
             />
 
             <DriverProfileModal 
