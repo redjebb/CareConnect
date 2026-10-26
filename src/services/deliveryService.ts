@@ -39,7 +39,6 @@ const haversineDistanceKm = (start: GeoLocation, end: GeoLocation) => {
 };
 
 export const completeDelivery = async (payload: CompleteDeliveryPayload & { egn: string }) => {
-  console.log('Sending to Firestore:', payload);
   
   const db = getFirestore();
 

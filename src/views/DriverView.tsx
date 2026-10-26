@@ -21,12 +21,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CircleMarker, MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Client, Driver, ScheduleItem } from '../types';
-import { getClientsByDriver, updateClientLastCheckIn, updateClientSignatures } from '../services/clientService';
+import { getClientsByDriver, updateClientLastCheckIn, updateClientNote, updateClientSignatures } from '../services/clientService';
 import { getScheduleItems } from '../services/scheduleService';
 import { addIncident } from '../services/incidentService';
 import IncidentReporter from '../IncidentReporter';
 import DriverRoute, { DriverVisit as DriverVisitCard } from '../components/DriverRoute';
 import SignatureModal from '../components/SignatureModal';
+import AccessNoteModal from '../components/AccessNoteModal';
 import {completeDelivery} from '../services/deliveryService';
 import { startShift, endShift } from '../services/driverStatsService';
 import { getFriendlyErrorMessage } from '../services/authService';
@@ -35,6 +36,8 @@ import { WifiOff, CloudOff, Wifi } from 'lucide-react';
 import { useNotification } from '../components/NotificationProvider';
 import emailjs from '@emailjs/browser';
 import { EMAILJS } from '../config';
+import { haversineKm } from '../utils/geo';
+import { resolveSosRecipient } from '../utils/sos';
 
 type DriverVisit = {
   client: Client;
@@ -248,20 +251,7 @@ const geocodeAddress = async (address: string) => {
   return { lat: location.y, lng: location.x };
 };
 
-const calculateDistance = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
-  const toRad = (value: number) => (value * Math.PI) / 180;
-  const earthRadiusKm = 6371;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-
-  const sinLat = Math.sin(dLat / 2);
-  const sinLng = Math.sin(dLng / 2);
-  const aVal = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
-  const cVal = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
-  return earthRadiusKm * cVal;
-};
+const calculateDistance = haversineKm;
 
 const getAddressKey = (address: string) => address.trim();
 
@@ -286,6 +276,9 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
 
   const [isIncidentModalOpen, setIsIncidentModalOpen] = useState(false);
   const [incidentClient, setIncidentClient] = useState<Client | null>(null);
+
+  const [noteClient, setNoteClient] = useState<Client | null>(null);
+  const [isNoteSaving, setIsNoteSaving] = useState(false);
 
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
   const [signatureClient, setSignatureClient] = useState<Client | null>(null);
@@ -634,6 +627,21 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
     }
   };
 
+  const handleSaveNote = async (note: string) => {
+    if (!noteClient) return;
+    setIsNoteSaving(true);
+    try {
+      await updateClientNote(noteClient.id, note, noteClient.registryId);
+      setDriverClients(prev => prev.map(c => (c.id === noteClient.id ? { ...c, notes: note.trim() } : c)));
+      showNotification('Бележката е запазена за следващите посещения.', 'success');
+      setNoteClient(null);
+    } catch (err: any) {
+      showNotification(getFriendlyErrorMessage(err.code || err.message), 'error');
+    } finally {
+      setIsNoteSaving(false);
+    }
+  };
+
   const handleOpenIncident = (client: Client | null | undefined) => {
     if (!client) {
       console.warn('Cannot open incident: no client provided');
@@ -720,12 +728,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         );
 
         // Send SOS email to the admin who assigned this task
-const todaysScheduleForClient = scheduleItems.find(item => 
-  item.clientId === incidentClient.id && 
-  item.driverId === currentDriver.id
-);
-
-const targetAdminEmail = todaysScheduleForClient?.assignedByAdminEmail;
+const targetAdminEmail = resolveSosRecipient(scheduleItems, incidentClient.id, currentDriver.id);
 
 if (targetAdminEmail) {
   const templateParams = {
@@ -750,7 +753,7 @@ if (targetAdminEmail) {
     console.error("❌ Грешка при изпращане на имейл чрез EmailJS:", emailErr);
   }
 } else {
-  console.warn(`⚠️ Не е намерен админ имейл в обекта за клиент: ${incidentClient.name}. Обектът от базата е:`, todaysScheduleForClient);
+  console.warn('Не е намерен имейл на диспечера за този клиент.');
 }
 
         await handleIncidentReportSuccess();
@@ -990,6 +993,7 @@ if (targetAdminEmail) {
                 driverActionClientId={driverActionClientId}
                 onCheckIn={client => client && handleOpenSignatureModal(client)}
                 onIncident={client => handleOpenIncident(client)}
+                onEditNote={client => setNoteClient(client)}
                 renderLastCheckInStatus={renderLastCheckInStatus}
                 isShiftActive={isShiftActive}
               />
@@ -1176,6 +1180,12 @@ if (targetAdminEmail) {
         />
       ) : null}
 
+      <AccessNoteModal
+        client={noteClient}
+        isSaving={isNoteSaving}
+        onSave={note => void handleSaveNote(note)}
+        onClose={() => setNoteClient(null)}
+      />
       <SignatureModal
         isOpen={isSignatureModalOpen}
         client={signatureClient}

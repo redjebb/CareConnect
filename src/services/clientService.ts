@@ -30,6 +30,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Client, ClientHistoryEntry } from '../types';
+import { MAX_NOTE_LENGTH } from '../config';
 
 const clientsCollection = collection(db, 'clients');
 
@@ -112,6 +113,19 @@ export async function deleteClient(id: string): Promise<void> {
   } catch (error) {
     console.error("Грешка при пълно изтриване:", error);
     throw error;
+  }
+}
+
+// Saves an access note on the visit and, when known, on the person's registry
+// entry so it is pre-filled for every future visit.
+export async function updateClientNote(id: string, note: string, registryId?: string): Promise<void> {
+  const cleanNote = note.trim().slice(0, MAX_NOTE_LENGTH);
+  await updateDoc(doc(db, 'clients', id), { notes: cleanNote });
+  if (registryId) {
+    await updateDoc(doc(db, 'clients_registry', registryId), {
+      notes: cleanNote,
+      notesUpdatedAt: new Date().toISOString()
+    });
   }
 }
 

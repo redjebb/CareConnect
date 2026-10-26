@@ -11,6 +11,7 @@ type RegistryFormState = {
   phone: string;
   defaultMealType: string;
   defaultMealCount: string;
+  notes: string;
 };
 
 type AdminRegistryViewProps = {
@@ -159,6 +160,19 @@ export default function AdminRegistryView({
                   ))}
                 </ul>
               )}
+            </div>
+
+            <div>
+              <label className={labelClasses}>Постоянна бележка за достъп</label>
+              <textarea
+                value={registryForm.notes}
+                onChange={e => onRegistryInputChange('notes', e.target.value)}
+                maxLength={500}
+                rows={3}
+                className={inputClasses}
+                placeholder="напр. 3-ти етаж, вратата вдясно; звънецът не работи – чукайте"
+              />
+              <p className="mt-1 text-[10px] text-slate-400">Показва се автоматично на шофьора при всяка доставка.</p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 pt-2">

@@ -34,6 +34,7 @@ interface DriverRouteProps {
   driverActionClientId: string | null;
   onCheckIn: (client: Client) => void;
   onIncident: (client: Client) => void;
+  onEditNote?: (client: Client) => void;
   renderLastCheckInStatus: (lastCheckIn: string | undefined) => ReactNode;
   isShiftActive?: boolean;
 }
@@ -61,6 +62,7 @@ function VisitSection({
   driverActionClientId,
   onCheckIn,
   onIncident,
+  onEditNote,
   renderLastCheckInStatus,
   isShiftActive
 }: {
@@ -69,6 +71,7 @@ function VisitSection({
   driverActionClientId: string | null;
   onCheckIn: (client: Client) => void;
   onIncident: (client: Client) => void;
+  onEditNote?: (client: Client) => void;
   renderLastCheckInStatus: (lastCheckIn: string | undefined) => ReactNode;
   isShiftActive: boolean;
 }) {
@@ -110,6 +113,21 @@ function VisitSection({
                   <span className="h-2 w-2 rounded-full bg-amber-300" aria-hidden="true" />
                   Доставка: {client.mealCount || 1}x {client.mealType || 'Стандартно меню'}
                 </div>
+                {client.notes?.trim() ? (
+                  <div className="mt-2 rounded-xl bg-sky-500/15 px-3 py-2 text-xs text-sky-100 ring-1 ring-sky-400/50">
+                    <span className="font-bold uppercase tracking-wide">Достъп: </span>
+                    {client.notes}
+                  </div>
+                ) : null}
+                {onEditNote ? (
+                  <button
+                    type="button"
+                    onClick={() => onEditNote(client)}
+                    className="mt-2 text-xs font-semibold text-sky-300 underline underline-offset-2 hover:text-sky-200"
+                  >
+                    {client.notes?.trim() ? 'Промени бележката' : '+ Добави бележка за достъп'}
+                  </button>
+                ) : null}
                 <div className="mt-2">{renderLastCheckInStatus(client.lastCheckIn)}</div>
               </div>
               {title === 'Предстоящи' ? (
@@ -172,6 +190,7 @@ export default function DriverRoute({
   driverActionClientId,
   onCheckIn,
   onIncident,
+  onEditNote,
   renderLastCheckInStatus,
   isShiftActive = true
 }: DriverRouteProps) {
@@ -183,6 +202,7 @@ export default function DriverRoute({
         driverActionClientId={driverActionClientId}
         onCheckIn={onCheckIn}
         onIncident={onIncident}
+        onEditNote={onEditNote}
         renderLastCheckInStatus={renderLastCheckInStatus}
         isShiftActive={isShiftActive}
       />
@@ -192,6 +212,7 @@ export default function DriverRoute({
         driverActionClientId={driverActionClientId}
         onCheckIn={onCheckIn}
         onIncident={onIncident}
+        onEditNote={onEditNote}
         renderLastCheckInStatus={renderLastCheckInStatus}
         isShiftActive={isShiftActive}
       />
@@ -201,6 +222,7 @@ export default function DriverRoute({
         driverActionClientId={driverActionClientId}
         onCheckIn={onCheckIn}
         onIncident={onIncident}
+        onEditNote={onEditNote}
         renderLastCheckInStatus={renderLastCheckInStatus}
         isShiftActive={isShiftActive}
       />

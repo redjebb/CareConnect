@@ -25,7 +25,7 @@
   import AdminRegistryView from './AdminRegistryView';
   import UserProfileModal from '../components/UserProfileModal';
   import SignatureViewerModal from '../components/SignatureViewerModal';
-  import { collection, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+  import { collection, onSnapshot } from 'firebase/firestore';
   import { db } from '../services/firebase';
   import DriverProfileModal from '../components/DriverProfileModal'; 
   import { getFriendlyErrorMessage } from '../services/authService';
@@ -80,21 +80,11 @@
 
     useEffect(() => {
       const unsubscribe = onSnapshot(collection(db, 'invitations'), (snapshot) => {
-        setInvitations(snapshot.docs.map(doc => doc.data()));
+        // Only expose what the UI needs; the activation token stays out of component state.
+        setInvitations(snapshot.docs.map(doc => ({ email: doc.data().email, role: doc.data().role, status: doc.data().status })));
       });
       return () => unsubscribe();
     }, []);
-
-    const sendInvite = async (email: string, role: 'driver' | 'manager') => {
-      const token = crypto.randomUUID();
-      await addDoc(collection(db, 'invitations'), {
-        email: email.trim(),
-        role: role,
-        token: token,
-        status: 'pending',
-        createdAt: serverTimestamp(),
-      });
-    };
 
     const handleGenerateOfficialReport = () => {
     setIsGlobalReportOpen(true);
@@ -103,12 +93,13 @@
     const handleQuickSchedule = (entry: ClientRegistryEntry) => {
       handleCloseProfile(); 
       setClientManagementTab('daily');
+      setSelectedRegistryEntryId(entry.id);
       setClientForm({
         egn: entry.egn,
         name: entry.name,
         address: entry.address,
         phone: entry.phone || '',
-        notes: '',
+        notes: entry.notes ?? '',
         assignedDriverId: '', 
         serviceDate: new Date().toISOString().split('T')[0], 
         mealType: entry.defaultMealType || 'Основно',
@@ -250,7 +241,6 @@
                     onSubmit={async (e) => {
                       e.preventDefault();
                       await handleAddAdmin(e);
-                      if (adminForm.email) await sendInvite(adminForm.email, 'manager');
                     }}
                     onDeleteAdmin={id => void handleDeleteAdmin(id)}
                   />
@@ -334,7 +324,6 @@
                     onSubmit={async (e) => {
                       e.preventDefault();
                       await handleAddDriver(e);
-                      if (driverForm.email) await sendInvite(driverForm.email, 'driver');
                     }}
                     onDeleteDriver={id => void handleDeleteDriver(id)}
                   />
