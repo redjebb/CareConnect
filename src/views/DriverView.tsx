@@ -17,9 +17,8 @@
  */
 
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CircleMarker, MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CircleMarker, MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
 import { Client, Driver, ScheduleItem } from '../types';
 import { getClientsByDriver, updateClientLastCheckIn, updateClientNote, updateClientSignatures } from '../services/clientService';
 import { getScheduleItems } from '../services/scheduleService';
@@ -41,6 +40,11 @@ import { resolveSosRecipient } from '../utils/sos';
 import { optimizeStops } from '../utils/route';
 import { commitWithOfflineGrace } from '../utils/offline';
 import { usePendingSync } from '../hooks/usePendingSync';
+import { getStoredShift, saveShiftToStorage, clearShiftFromStorage } from '../utils/shiftStorage';
+import { formatDuration, isSameDay, isTomorrow, isAfterTomorrow } from '../utils/dates';
+import { renderLastCheckInStatus } from '../components/CheckInStatus';
+import { MapBoundsController, pendingMarkerIcon, deliveredMarkerIcon } from '../components/DriverMapParts';
+import { geocodeAddress } from '../services/geocodingService';
 
 type DriverVisit = {
   client: Client;
@@ -48,210 +52,6 @@ type DriverVisit = {
   date: Date;
   sequenceNumber?: number;
   distanceFromPreviousKm?: number | null;
-};
-
-type ShiftData = {
-  isActive: boolean;
-  startTime: string | null;
-  deliveredCount: number;
-};
-
-const SHIFT_STORAGE_KEY = 'careconnect_driver_shift';
-
-const getStoredShift = (): ShiftData | null => {
-  try {
-    const stored = localStorage.getItem(SHIFT_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : null;
-  } catch {
-    return null;
-  }
-};
-
-const saveShiftToStorage = (data: ShiftData) => {
-  try {
-    localStorage.setItem(SHIFT_STORAGE_KEY, JSON.stringify(data));
-  } catch (err) {
-    console.error('Грешка при запис на данните за смяната в локалното хранилище:', err);
-  }
-};
-
-const clearShiftFromStorage = () => {
-  try {
-    localStorage.removeItem(SHIFT_STORAGE_KEY);
-  } catch (err) {
-    console.error('Грешка при изчистване на данните за смяната от локалното хранилище:', err);
-  }
-};
-
-const formatDuration = (startTime: string): string => {
-  const start = new Date(startTime);
-  const now = new Date();
-  const diffMs = now.getTime() - start.getTime();
-  const hours = Math.floor(diffMs / (1000 * 60 * 60));
-  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-  return `${hours}ч ${minutes}мин`;
-};
-
-const startOfDay = (date: Date) => {
-  const normalized = new Date(date);
-  normalized.setHours(0, 0, 0, 0);
-  return normalized;
-};
-
-const isSameDay = (d1: Date, d2: Date) => startOfDay(d1).getTime() === startOfDay(d2).getTime();
-
-const isTomorrow = (date: Date) => {
-  const tomorrow = startOfDay(new Date());
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return isSameDay(date, tomorrow);
-};
-
-const isAfterTomorrow = (date: Date) => {
-  const dayAfterTomorrow = startOfDay(new Date());
-  dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
-  return date.getTime() >= dayAfterTomorrow.getTime();
-};
-
-const renderLastCheckInStatus = (lastCheckIn: string | undefined) => {
-  const formatDate = (value: string) => {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return value;
-    }
-
-    return date.toLocaleString('bg-BG', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  if (!lastCheckIn) {
-    return (
-      <span className="inline-flex items-center gap-2 text-sm font-medium text-amber-500">
-        <span className="h-2 w-2 rounded-full bg-amber-500" />
-        Няма отчет за посещение
-      </span>
-    );
-  }
-
-  const normalized = lastCheckIn.trim();
-  const normalizedUpper = normalized.toUpperCase();
-
-  const renderIncidentStatus = (payload: string) => {
-    const trimmed = payload.trim();
-    const isoMatch = trimmed.match(/\d{4}-\d{2}-\d{2}T[^\s]+/);
-    const timestamp = isoMatch ? isoMatch[0] : '';
-    const incidentType = isoMatch ? trimmed.replace(timestamp, '').trim() : trimmed;
-    const formattedDate = timestamp ? formatDate(timestamp) : 'неизвестно време';
-
-    return (
-      <span className="inline-flex items-center gap-2 text-sm font-semibold text-red-500">
-        <span className="h-2 w-2 rounded-full bg-red-500" />
-        Сигнал: {incidentType || 'Непознат тип'} ({formattedDate})
-      </span>
-    );
-  };
-
-  if (normalizedUpper.startsWith('INCIDENT:')) {
-    const payload = normalized.slice(normalizedUpper.indexOf('INCIDENT:') + 'INCIDENT:'.length);
-    return renderIncidentStatus(payload);
-  }
-
-  const isLegacySos = normalizedUpper.startsWith('SOS ');
-  const printableValue = isLegacySos ? normalized.replace(/^SOS\s+/i, '') : normalized;
-  const formatted = formatDate(printableValue);
-
-  if (isLegacySos) {
-    return (
-      <span className="inline-flex items-center gap-2 text-sm font-semibold text-red-500">
-        <span className="h-2 w-2 rounded-full bg-red-500" />
-        Сигнал: SOS ({formatted})
-      </span>
-    );
-  }
-
-  return (
-    <span className="inline-flex items-center gap-2 text-sm font-medium text-emerald-500">
-      <span className="h-2 w-2 rounded-full bg-emerald-500" />
-      Последен отчет: {formatted}
-    </span>
-  );
-};
-
-const arcGisMarkerShadow =
-  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png';
-const pendingMarkerIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
-  shadowUrl: arcGisMarkerShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
-const deliveredMarkerIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
-  shadowUrl: arcGisMarkerShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
-
-
-function MapBoundsController({
-  coordinates,
-  fallbackCenter,
-  driverPosition
-}: {
-  coordinates: Array<{ lat: number; lng: number }>;
-  fallbackCenter: { lat: number; lng: number };
-  driverPosition: { lat: number; lng: number } | null;
-}) {
-  const map = useMap();
-  const hasCenteredOnDriver = useRef(false);
-
-  useEffect(() => {
-    if (driverPosition && !hasCenteredOnDriver.current) {
-      map.setView([driverPosition.lat, driverPosition.lng], 13);
-      hasCenteredOnDriver.current = true;
-    }
-
-    if (coordinates.length === 0) {
-      const center = driverPosition ?? fallbackCenter;
-      map.setView([center.lat, center.lng], 12);
-      return;
-    }
-
-    const boundsPoints = [
-      ...coordinates.map(coord => [coord.lat, coord.lng] as [number, number]),
-      ...(driverPosition ? [[driverPosition.lat, driverPosition.lng] as [number, number]] : [])
-    ];
-    const bounds = L.latLngBounds(boundsPoints as L.LatLngBoundsLiteral);
-    map.fitBounds(bounds, { padding: [30, 30] });
-  }, [coordinates, fallbackCenter, map, driverPosition]);
-
-  return null;
-}
-
-const geocodeAddress = async (address: string) => {
-  const url = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&singleLine=${encodeURIComponent(
-    address
-  )}&countryCode=BGR&maxLocations=1`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    return null;
-  }
-  const payload = (await response.json()) as {
-    candidates?: Array<{ location?: { x: number; y: number } }>;
-  };
-  const candidate = payload.candidates?.[0];
-  const location = candidate?.location;
-  if (!location) {
-    return null;
-  }
-  return { lat: location.y, lng: location.x };
 };
 
 const calculateDistance = haversineKm;

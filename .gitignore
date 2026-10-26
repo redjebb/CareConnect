@@ -30,3 +30,7 @@ Thumbs.db
 
 # Тестове
 /coverage
+test-results/
+playwright-report/
+firestore-debug.log
+ui-debug.log

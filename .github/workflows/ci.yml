@@ -25,5 +25,7 @@ jobs:
         run: npm test
       - name: Firestore security rules tests (emulator)
         run: npm run test:rules
+      - name: End-to-end tests (demo emulators)
+        run: npm run test:e2e
       - name: Production build
         run: npm run build

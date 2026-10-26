@@ -74,6 +74,18 @@ Firestore security-rules tests (needs Java 21, runs the Firestore emulator):
 npm run test:rules
 ```
 
+End-to-end browser tests (Chrome + emulators, seeded fake data):
+
+```bash
+npm run test:e2e
+```
+
+Run the whole app locally on emulators with demo accounts (no production data touched):
+
+```bash
+npm run demo   # master@demo.bg / manager@demo.bg / driver@demo.bg – password Demo12345!
+```
+
 ---
 
 ## 🛠 Tech Stack
@@ -108,6 +120,7 @@ npm run test:rules
 - **Offline-first PWA** – installable, works without signal, shows a sync queue.
 - **Digital signatures & SOS** – Canvas signatures and instant e-mail alerts to the planning dispatcher.
 - **Analytics** – deliveries per day, success rate, driver performance, top issues, missed visits.
+- **GDPR tools** – per-person data export and full erasure.
 - **Least-privilege security** – role profiles, token-based invitations, 25 emulator-tested Firestore rules.
 
 Documentation for the jury is in [`docs/`](docs/) (Bulgarian): project documentation, test evidence, defence script. Security and deployment notes: [`docs/SECURITY-AND-DEPLOY.md`](docs/SECURITY-AND-DEPLOY.md).
