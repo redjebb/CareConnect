@@ -34,3 +34,6 @@ test-results/
 playwright-report/
 firestore-debug.log
 ui-debug.log
+backups/
+service-account*.json
+*-firebase-adminsdk-*.json

@@ -12,7 +12,10 @@
     "test:watch": "vitest",
     "test:rules": "firebase emulators:exec --only firestore --project demo-careconnect \"vitest run --config vitest.rules.config.ts\"",
     "demo": "firebase emulators:exec --only auth,firestore --project demo-careconnect \"node scripts/seed-demo.mjs && vite --mode demo\"",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "backup": "node scripts/backup.mjs",
+    "migrate:profiles": "node scripts/migrate-profiles.mjs",
+    "migrate:rehearse": "firebase emulators:exec --only auth,firestore --project demo-careconnect \"node scripts/legacy-seed.mjs && node scripts/migrate-profiles.mjs --apply && node scripts/migrate-profiles.mjs\""
   },
   "engines": {
     "node": ">=18.0.0",
