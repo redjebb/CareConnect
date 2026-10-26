@@ -102,7 +102,7 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
   const { showNotification } = useNotification();
 
 
-  const [currentView, setCurrentView] = useState<'clients' | 'drivers' | 'admins'>('clients');
+  const [currentView, setCurrentView] = useState<'clients' | 'drivers' | 'admins' | 'analytics'>('clients');
   const [clientManagementTab, setClientManagementTab] = useState<'registry' | 'daily'>('daily');
 
   const [clients, setClients] = useState<ClientWithSchedule[]>([]);

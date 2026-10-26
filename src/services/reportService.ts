@@ -17,6 +17,7 @@
  */
 
 
+import type { DeliveryRecord } from '../utils/analytics';
 import {
   Timestamp,
   collection,
@@ -205,4 +206,32 @@ export async function getGlobalMonthlyReport(date: Date) {
     console.error("Грешка при генериране на общ отчет:", error);
     throw error;
   }
+}
+
+// Raw delivery history for the last `days` days, normalised for analytics.
+// Single-field range query: no composite index required.
+export async function getDeliveryRecords(days: number): Promise<DeliveryRecord[]> {
+  const db = getFirestore();
+  const start = new Date();
+  start.setDate(start.getDate() - days);
+  start.setHours(0, 0, 0, 0);
+
+  const snapshot = await getDocs(
+    query(collection(db, 'deliveryHistory'), where('timestamp', '>=', Timestamp.fromDate(start)))
+  );
+
+  return snapshot.docs.map(docSnap => {
+    const data = docSnap.data();
+    const ts = data.timestamp?.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
+    return {
+      clientId: data.clientId,
+      egn: data.egn,
+      driverId: data.driverId,
+      driverName: data.driverName,
+      status: data.status,
+      mealCount: data.mealCount,
+      issueType: data.issueType,
+      timestamp: ts
+    } as DeliveryRecord;
+  });
 }

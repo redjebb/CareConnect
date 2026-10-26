@@ -38,6 +38,9 @@ import emailjs from '@emailjs/browser';
 import { EMAILJS } from '../config';
 import { haversineKm } from '../utils/geo';
 import { resolveSosRecipient } from '../utils/sos';
+import { optimizeStops } from '../utils/route';
+import { commitWithOfflineGrace } from '../utils/offline';
+import { usePendingSync } from '../hooks/usePendingSync';
 
 type DriverVisit = {
   client: Client;
@@ -271,6 +274,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
   const [isLocationLoading, setIsLocationLoading] = useState(true);
   const isOnline = useOnlineStatus();
   const { showNotification } = useNotification();
+  const { queuedCount, markQueued } = usePendingSync(isOnline);
 
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
 
@@ -516,8 +520,24 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
       return { ...visit, coords };
     });
 
-    // Keep original order (no sequenceNumber available on ScheduleItem)
-    const sorted = visitsWithCoords;
+    // Pending stops are re-ordered to shorten the trip (nearest-neighbour + 2-opt);
+    // finished stops follow in their original order.
+    const isDone = (visit: (typeof visitsWithCoords)[number]) =>
+      Boolean(
+        visit.client.clientSignature ||
+          visit.client.lastSignature ||
+          visit.client.driverSignature ||
+          visit.client.lastCheckIn?.trim()
+      );
+    const pending = visitsWithCoords.filter(visit => !isDone(visit));
+    const finished = visitsWithCoords.filter(isDone);
+    const sorted = [
+      ...optimizeStops(
+        currentPosition,
+        pending.map(visit => ({ item: visit, coords: visit.coords }))
+      ),
+      ...finished
+    ];
 
     // Calculate distances from previous point (starting from driver's current position)
     let previousCoords = currentPosition;
@@ -591,14 +611,12 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
       const targetClient = driverClients.find(c => c.id === clientId);
       const clientCoords = geoCache[getAddressKey(targetClient?.address || '')];
 
-      await updateClientSignatures(
+      const writes = Promise.all([updateClientSignatures(
         clientId,
         driverSig,
         clientSig,
         'Доставено и подписано от двете страни'
-      );
-
-      await completeDelivery({
+      ), completeDelivery({
         clientId: clientId,
         clientName: targetClient?.name || '---',
         egn: targetClient?.egn || 'N/A',
@@ -611,12 +629,26 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         mealCount: Number((targetClient as any)?.mealCount) || 1,
         driverSignature: driverSig, 
         clientSignature: clientSig  
-      } as any);
+      } as any)]);
 
-      console.log('Delivery history record successfully created for client:', clientId);
+      const outcome = await commitWithOfflineGrace(writes, {
+        onLateError: error => console.error('Офлайн записът беше отхвърлен от сървъра.', error)
+      });
 
-      const refreshed = await getClientsByDriver(currentDriver.id);
-      setDriverClients(refreshed);
+      if (outcome === 'queued') {
+        markQueued();
+        showNotification('Няма връзка: доставката е запазена и ще се синхронизира автоматично.', 'warning');
+        setDriverClients(prev =>
+          prev.map(c =>
+            c.id === clientId
+              ? { ...c, driverSignature: driverSig, clientSignature: clientSig, lastSignature: clientSig, lastCheckIn: 'Доставено и подписано от двете страни' }
+              : c
+          )
+        );
+      } else {
+        const refreshed = await getClientsByDriver(currentDriver.id);
+        setDriverClients(refreshed);
+      }
 
     } catch (err: any) {
       console.error("Грешка при финализиране на доставка:", err);
@@ -631,9 +663,10 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
     if (!noteClient) return;
     setIsNoteSaving(true);
     try {
-      await updateClientNote(noteClient.id, note, noteClient.registryId);
+      const outcome = await commitWithOfflineGrace(updateClientNote(noteClient.id, note, noteClient.registryId));
+      if (outcome === 'queued') markQueued();
       setDriverClients(prev => prev.map(c => (c.id === noteClient.id ? { ...c, notes: note.trim() } : c)));
-      showNotification('Бележката е запазена за следващите посещения.', 'success');
+      showNotification(outcome === 'queued' ? 'Бележката е запазена офлайн и ще се синхронизира.' : 'Бележката е запазена за следващите посещения.', outcome === 'queued' ? 'warning' : 'success');
       setNoteClient(null);
     } catch (err: any) {
       showNotification(getFriendlyErrorMessage(err.code || err.message), 'error');
@@ -697,15 +730,15 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         const incidentTimestamp = new Date().toISOString();
 
         // Record the incident
-        await addIncident({
+        const writes = Promise.all([addIncident({
           clientId: incidentClient.id,
           driverId: currentDriver.id,
           type: incidentType,
           description
-        });
+        }),
 
         // Log delivery as an issue in history
-        await completeDelivery({
+        completeDelivery({
           clientId: incidentClient.id,
           clientName: incidentClient.name || '---',
           egn: incidentClient?.egn || 'N/A',
@@ -719,13 +752,16 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
           status: 'issue',
           issueType: incidentType,
           issueDescription: description
-        } as any);
+        } as any),
 
         // Update client status for the day
-        await updateClientLastCheckIn(
+        updateClientLastCheckIn(
           incidentClient.id,
           `INCIDENT: ${incidentType} ${incidentTimestamp}`
-        );
+        )]);
+
+        const outcome = await commitWithOfflineGrace(writes);
+        if (outcome === 'queued') markQueued();
 
         // Send SOS email to the admin who assigned this task
 const targetAdminEmail = resolveSosRecipient(scheduleItems, incidentClient.id, currentDriver.id);
@@ -757,7 +793,7 @@ if (targetAdminEmail) {
 }
 
         await handleIncidentReportSuccess();
-        showNotification('Сигналът е изпратен успешно!', 'success');
+        showNotification(outcome === 'queued' ? 'Сигналът е запазен офлайн и ще бъде изпратен при връзка.' : 'Сигналът е изпратен успешно!', outcome === 'queued' ? 'warning' : 'success');
         handleCloseIncidentModal();
       } catch (err: any) {
         console.error('Грешка при изпращане на сигнал:', err);
@@ -765,7 +801,7 @@ if (targetAdminEmail) {
         showNotification(friendlyMessage, 'error');
       }
     },
-    [incidentClient, currentDriver?.id, currentDriver?.name, handleIncidentReportSuccess, isShiftActive, currentPosition, geoCache, scheduleItems]
+    [incidentClient, markQueued, currentDriver?.id, currentDriver?.name, handleIncidentReportSuccess, isShiftActive, currentPosition, geoCache, scheduleItems]
   );
 
   const handleStartShift = async () => { 
@@ -871,6 +907,18 @@ if (targetAdminEmail) {
       </div>
     )}
     
+    {isOnline && queuedCount > 0 && (
+      <div className="fixed top-0 left-0 right-0 z-[1000] bg-sky-600 text-white px-4 py-2 flex items-center justify-center gap-3 shadow-2xl">
+        <CloudOff className="w-4 h-4 animate-pulse" />
+        <span className="text-[10px] font-black uppercase tracking-widest">Синхронизиране на офлайн промени...</span>
+      </div>
+    )}
+    {!isOnline && queuedCount > 0 && (
+      <div className="fixed bottom-24 left-1/2 z-[1000] -translate-x-1/2 rounded-full bg-slate-800 px-4 py-2 text-xs font-bold text-amber-200 ring-1 ring-amber-400/50">
+        {queuedCount} {queuedCount === 1 ? 'промяна чака' : 'промени чакат'} за синхронизация
+      </div>
+    )}
+
     <section className={`mx-auto flex h-screen max-w-lg flex-col px-4 pb-6 transition-all duration-300 ${!isOnline ? 'pt-20' : 'pt-10'}`}>
       <header className="mb-6">
           <div className="flex items-center justify-between">

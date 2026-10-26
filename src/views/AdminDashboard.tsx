@@ -29,7 +29,8 @@
   import { db } from '../services/firebase';
   import DriverProfileModal from '../components/DriverProfileModal'; 
   import { getFriendlyErrorMessage } from '../services/authService';
-  import { LogOut, LayoutDashboard, Users, Truck, ShieldCheck, Database, CalendarDays, FileText } from 'lucide-react';
+  import { LogOut, LayoutDashboard, Users, Truck, ShieldCheck, Database, CalendarDays, FileText, BarChart3 } from 'lucide-react';
+  import AnalyticsPanel from '../components/AnalyticsPanel';
   import type { Driver, ClientRegistryEntry } from '../types';
   import GlobalMonthlyReportModal from '../components/GlobalMonthlyReportModal';
 
@@ -194,6 +195,14 @@
                   >
                     <Truck className="w-4 h-4" /> Шофьори
                   </button>
+                  <button
+                    onClick={() => setCurrentView('analytics')}
+                    className={`flex flex-1 lg:flex-none items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition-all ${
+                      currentView === 'analytics' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'
+                    }`}
+                  >
+                    <BarChart3 className="w-4 h-4" /> Аналитика
+                  </button>
                 </div>
 
                 {currentView === 'clients' && (
@@ -307,6 +316,8 @@
                 onClose={() => setIsGlobalReportOpen(false)}
                 adminEmail={userEmail}
                 />
+
+                {currentView === 'analytics' && <AnalyticsPanel />}
 
                 {currentView === 'drivers' && (
                   <AdminDriversView
