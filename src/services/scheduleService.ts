@@ -37,8 +37,11 @@ export async function addScheduleItem(item: ScheduleItemInput): Promise<string> 
   return docRef.id;
 }
 
-export async function getScheduleItems(): Promise<ScheduleItem[]> {
-  const snapshot = await getDocs(scheduleCollection);
+// Drivers must pass their id: firestore.rules only allows queries scoped to it.
+export async function getScheduleItems(driverId?: string): Promise<ScheduleItem[]> {
+  const snapshot = await getDocs(
+    driverId ? query(scheduleCollection, where('driverId', '==', driverId)) : scheduleCollection
+  );
   return snapshot.docs.map(docSnapshot => {
     const data = docSnapshot.data() as Omit<ScheduleItem, 'id'> & { date: unknown };
     const normalizedDate = normalizeDateValue(data.date);

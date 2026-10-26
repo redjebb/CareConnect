@@ -25,7 +25,7 @@
 import 'leaflet/dist/leaflet.css';
 import { FormEvent, useEffect, useState } from 'react';
 import { Driver } from './types';
-import { getDriverByEmail } from './services/driverService';
+import { getDriverById } from './services/driverService';
 import { FirebaseUser, getFriendlyErrorMessage, login, logout, subscribeToAuthState } from './services/authService';
 import AdminDashboard from './views/AdminDashboard';
 import DriverView from './views/DriverView';
@@ -71,9 +71,9 @@ function App() {
   // Load driver profile when user has DRIVER role
   useEffect(() => {
     const loadDriverProfile = async () => {
-      if (user && user.role === 'DRIVER' && user.email) {
+      if (user && user.role === 'DRIVER' && user.driverId) {
         try {
-          const profile = await getDriverByEmail(user.email);
+          const profile = await getDriverById(user.driverId);
           setCurrentDriver(profile);
         } catch (err) {
           console.error("Грешка при зареждане на шофьор:", err);

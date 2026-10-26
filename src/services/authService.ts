@@ -19,52 +19,52 @@
 
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
   User
 } from 'firebase/auth';
-import { auth, db } from './firebase'; 
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { auth, db } from './firebase';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
-export type FirebaseUser = User & { role?: string };
+export type FirebaseUser = User & { role?: string; driverId?: string };
 
-async function fetchRoleByEmail(email: string): Promise<string> {
+// Bootstrap owner account. Mirrors isBootstrapMaster() in firestore.rules.
+const BOOTSTRAP_MASTER_EMAIL = 'redjebtudjar@gmail.com';
+
+export interface UserProfile {
+  role: string;
+  driverId?: string;
+}
+
+// Authorization data lives in users/{uid}; it can only be created by a master
+// admin or by claiming an invitation (enforced in firestore.rules).
+async function fetchProfile(user: User): Promise<UserProfile> {
   try {
-    const adminsRef = collection(db, 'admins');
-    const q = query(adminsRef, where("email", "==", email));
-    const querySnapshot = await getDocs(q);
-
-    if (!querySnapshot.empty) {
-      const adminData = querySnapshot.docs[0].data();
-      console.log("Намерен админ:", adminData);
-      return adminData.role || 'MANAGER'; 
+    const snap = await getDoc(doc(db, 'users', user.uid));
+    if (snap.exists()) {
+      const data = snap.data();
+      return { role: typeof data.role === 'string' ? data.role : 'NO_ROLE', driverId: data.driverId || undefined };
     }
-
-    const driversRef = collection(db, 'drivers');
-    const dq = query(driversRef, where("email", "==", email));
-    const driverSnapshot = await getDocs(dq);
-
-    if (!driverSnapshot.empty) return 'DRIVER';
-
-    return 'NO_ROLE';
   } catch (error) {
-    console.error("Грешка при fetchRole:", error);
-    return 'NO_ROLE';
+    console.error('Грешка при зареждане на профил:', error);
   }
+  if (user.email?.toLowerCase() === BOOTSTRAP_MASTER_EMAIL) {
+    return { role: 'MASTER_ADMIN' };
+  }
+  return { role: 'NO_ROLE' };
 }
 
 export const login = async (email: string, pass: string) => {
   const userCredential = await signInWithEmailAndPassword(auth, email, pass);
   const user = userCredential.user;
-
-  // Fetch role from Firestore on login
-  const role = await fetchRoleByEmail(user.email!);
+  const profile = await fetchProfile(user);
 
   return {
     uid: user.uid,
     email: user.email,
-    role: role
+    role: profile.role
   };
 };
 
@@ -73,52 +73,76 @@ export async function getUserRole(uid: string): Promise<string | null> {
   return userDoc.exists() ? userDoc.data().role : null;
 }
 
-export async function createUserAccount(email: string, password: string): Promise<any> {
-  const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-  const user = userCredential.user;
-
-  await ensureUserDocumentExists(user);
-  
-  return userCredential; 
+export class InvalidInvitationError extends Error {
+  constructor() {
+    super('invalid-invitation');
+  }
 }
 
-export const ensureUserDocumentExists = async (user: any) => {
-  const userRef = doc(db, 'users', user.uid);
-  const userSnap = await getDoc(userRef);
+export interface InvitationLink {
+  email: string;
+  token: string;
+  role: 'DRIVER' | 'MANAGER';
+  driverId?: string;
+  adminId?: string;
+}
 
-  // Return existing role if user document already exists
-  if (userSnap.exists()) {
-    return userSnap.data().role;
+// Registers the account (or signs in to an unfinished one) and claims the
+// invitation with the secret token from the activation link. The invitation
+// itself is unreadable for the invitee on purpose: firestore.rules validates
+// the token we send, so a forged claim is refused server-side.
+export async function activateInvitedAccount(invite: InvitationLink, password: string): Promise<void> {
+  const email = invite.email.trim().toLowerCase();
+  let user: User;
+  let createdNow = false;
+
+  try {
+    user = (await createUserWithEmailAndPassword(auth, email, password)).user;
+    createdNow = true;
+  } catch (err: any) {
+    if (err.code !== 'auth/email-already-in-use') throw err;
+    user = (await signInWithEmailAndPassword(auth, email, password)).user;
   }
 
-  // Determine role by checking admins, then drivers collections
-  let roleToAssign = 'USER'; 
-
-  const adminsRef = collection(db, 'admins');
-  const adminQ = query(adminsRef, where("email", "==", user.email));
-  const adminSnap = await getDocs(adminQ);
-  
-  if (!adminSnap.empty) {
-    roleToAssign = 'MANAGER';
-  } else {
-    const driversRef = collection(db, 'drivers');
-    const driverQ = query(driversRef, where("email", "==", user.email));
-    const driverSnap = await getDocs(driverQ);
-    if (!driverSnap.empty) {
-      roleToAssign = 'DRIVER';
+  try {
+    const profileRef = doc(db, 'users', user.uid);
+    if (!(await getDoc(profileRef)).exists()) {
+      try {
+        await setDoc(profileRef, {
+          uid: user.uid,
+          email,
+          role: invite.role,
+          driverId: invite.driverId ?? '',
+          inviteToken: invite.token,
+          createdAt: new Date().toISOString()
+        });
+      } catch (err: any) {
+        if (err.code === 'permission-denied') throw new InvalidInvitationError();
+        throw err;
+      }
     }
+
+    await updateDoc(doc(db, 'invitations', email), {
+      status: 'accepted',
+      activatedAt: new Date().toISOString()
+    }).catch(() => undefined);
+
+    const recordId = invite.role === 'DRIVER' ? invite.driverId : invite.adminId;
+    if (recordId) {
+      await updateDoc(doc(db, invite.role === 'DRIVER' ? 'drivers' : 'admins', recordId), {
+        status: 'active',
+        uid: user.uid
+      });
+    }
+  } catch (err) {
+    if (createdNow) {
+      await deleteUser(user).catch(() => undefined);
+    } else {
+      await signOut(auth);
+    }
+    throw err;
   }
-
-  // Persist user document with resolved role
-  await setDoc(userRef, {
-    email: user.email,
-    role: roleToAssign,
-    uid: user.uid,
-    createdAt: new Date().toISOString()
-  });
-
-  return roleToAssign;
-};
+}
 
 export async function logout(): Promise<void> {
   await signOut(auth);
@@ -126,20 +150,12 @@ export async function logout(): Promise<void> {
 
 export function subscribeToAuthState(callback: (user: FirebaseUser | null) => void): () => void {
   return onAuthStateChanged(auth, async (user) => {
-    if (user) {
-      try {
-        const role = await fetchRoleByEmail(user.email!);
-        callback({ 
-          ...user, 
-          role: role 
-        });
-      } catch (error) {
-        console.error("Грешка при взимане на роля:", error);
-        callback({ ...user, role: 'NO_ROLE' });
-      }
-    } else {
+    if (!user) {
       callback(null);
+      return;
     }
+    const profile = await fetchProfile(user);
+    callback({ ...user, role: profile.role, driverId: profile.driverId });
   });
 }
 

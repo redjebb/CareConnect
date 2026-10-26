@@ -21,7 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CircleMarker, MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Client, Driver, ScheduleItem } from '../types';
-import { getClients, getClientsByDriver, updateClientLastCheckIn, updateClientSignatures } from '../services/clientService';
+import { getClientsByDriver, updateClientLastCheckIn, updateClientSignatures } from '../services/clientService';
 import { getScheduleItems } from '../services/scheduleService';
 import { addIncident } from '../services/incidentService';
 import IncidentReporter from '../IncidentReporter';
@@ -34,6 +34,7 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { WifiOff, CloudOff, Wifi } from 'lucide-react';
 import { useNotification } from '../components/NotificationProvider';
 import emailjs from '@emailjs/browser';
+import { EMAILJS } from '../config';
 
 type DriverVisit = {
   client: Client;
@@ -322,12 +323,12 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
 
   const fetchSchedule = useCallback(async () => {
     try {
-      const data = await getScheduleItems();
+      const data = await getScheduleItems(currentDriver.id);
       setScheduleItems(data);
     } catch (err) {
       console.error('Неуспешно зареждане на графика.', err);
     }
-  }, []);
+  }, [currentDriver.id]);
 
   useEffect(() => {
     void fetchSchedule();
@@ -340,7 +341,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
       setDriverClientsLoading(true);
       setDriverClientsError(null);
       try {
-        const data = await getClients();
+        const data = await getClientsByDriver(currentDriver.id);
         if (isMounted) {
           setDriverClients(data);
         }
@@ -739,10 +740,10 @@ if (targetAdminEmail) {
 
   try {
     await emailjs.send(
-      'service_dkng7ol', 
-      'template_o1iokwt',
+      EMAILJS.serviceId,
+      EMAILJS.sosTemplateId,
       templateParams,
-      'ikmstn4Jj0VVM1gWD'
+      EMAILJS.publicKey
     );
     console.log("✅ SOS Имейлът до админа (" + targetAdminEmail + ") е изпратен успешно!");
   } catch (emailErr) {

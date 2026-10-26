@@ -17,70 +17,51 @@
  */
 
 
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { db, auth} from '../services/firebase'; 
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { createUserAccount, getFriendlyErrorMessage, ensureUserDocumentExists } from '../services/authService';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { activateInvitedAccount, getFriendlyErrorMessage, InvalidInvitationError, InvitationLink } from '../services/authService';
 import { useNotification } from '../components/NotificationProvider';
+
+const MIN_PASSWORD_LENGTH = 8;
 
 export default function ActivateAccount() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { showNotification } = useNotification();
-  
-  
-  
-  const [status, setStatus] = useState<'loading' | 'valid' | 'invalid'>('loading');
-  const [email, setEmail] = useState('');
+
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const emailParam = searchParams.get('email');
-
-  useEffect(() => {
-    const verifyInvitation = async () => {
-      if (!emailParam) {
-        setStatus('invalid');
-        return;
-      }
-
-      try {
-        const q = query(
-          collection(db, 'invitations'), 
-          where('email', '==', emailParam.trim())
-        );
-        const querySnapshot = await getDocs(q);
-
-        if (querySnapshot.empty) {
-          setStatus('invalid');
-        } else {
-          const invData = querySnapshot.docs[0].data();
-          if (invData.status === 'accepted') {
-            setStatus('invalid');
-          } else {
-            setEmail(emailParam.trim());
-            setStatus('valid');
-          }
-        }
-      } catch (err) {
-        console.error("Грешка при проверка на поканата:", err);
-        setStatus('invalid');
-      }
+  // Everything needed to claim the invitation travels in the e-mailed link.
+  const invite = useMemo<InvitationLink | null>(() => {
+    const email = searchParams.get('email')?.trim();
+    const token = searchParams.get('token');
+    const role = searchParams.get('role') === 'driver' ? 'DRIVER' : 'MANAGER';
+    if (!email || !token) return null;
+    return {
+      email,
+      token,
+      role,
+      driverId: searchParams.get('driver') ?? undefined,
+      adminId: searchParams.get('admin') ?? undefined
     };
+  }, [searchParams]);
 
-    verifyInvitation();
-  }, [emailParam]);
-  
+  const status: 'valid' | 'invalid' = invite ? 'valid' : 'invalid';
+  const email = invite?.email ?? '';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    if (!invite) return;
+
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setErrorMessage(`Паролата трябва да е поне ${MIN_PASSWORD_LENGTH} символа.`);
+      return;
+    }
     if (password !== confirmPassword) {
-      setErrorMessage("Паролите не съвпадат!");
+      setErrorMessage('Паролите не съвпадат!');
       return;
     }
 
@@ -88,71 +69,20 @@ export default function ActivateAccount() {
     setErrorMessage(null);
 
     try {
-      let user: any = null;
-
-      try {
-        // Attempt normal registration
-        const userCredential = await createUserAccount(email, password);
-        user = userCredential.user;
-      } catch (authErr: any) {
-        // If account exists from a prior incomplete attempt, sign in and continue
-        if (authErr.code === 'auth/email-already-in-use') {
-          console.log("Акаунтът съществува в Auth, правим опит за вход и довършване на базата...");
-          const loginCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
-          user = loginCredential.user;
-          await ensureUserDocumentExists(user);
-        } else {
-          throw authErr;
-        }
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Mark invitation as accepted
-      const invQ = query(collection(db, 'invitations'), where('email', '==', email.trim()));
-      const invSnapshot = await getDocs(invQ);
-      
-      if (!invSnapshot.empty) {
-        await updateDoc(doc(db, 'invitations', invSnapshot.docs[0].id), {
-          status: 'accepted',
-          activatedAt: new Date().toISOString()
-        });
-      }
-
-      // Activate the user in admins or drivers collection
-      const roles = ['admins', 'drivers'];
-      for (const role of roles) {
-        const q = query(collection(db, role), where('email', '==', email.trim()));
-        const snapshot = await getDocs(q);
-        
-        if (!snapshot.empty) {
-          await updateDoc(doc(db, role, snapshot.docs[0].id), {
-            status: 'active',
-            uid: user.uid
-          });
-          console.log(`Статусът в ${role} беше обновен на active!`);
-        }
-      }
-
-      showNotification("Акаунтът е активиран успешно!", "success");
-      navigate('/'); 
-
+      await activateInvitedAccount(invite, password);
+      showNotification('Акаунтът е активиран успешно!', 'success');
+      navigate('/');
     } catch (err: any) {
-      console.error(err);
-      setErrorMessage(getFriendlyErrorMessage(err.code || ''));
+      if (err instanceof InvalidInvitationError) {
+        setErrorMessage('Поканата е невалидна, изтекла или вече използвана.');
+      } else {
+        setErrorMessage(getFriendlyErrorMessage(err.code || ''));
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (status === 'loading') {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-xl font-semibold text-slate-600 animate-pulse">Проверка на поканата...</div>
-      </div>
-    );
-  }
-  
   if (status === 'invalid') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
@@ -192,7 +122,7 @@ export default function ActivateAccount() {
               className="mt-1 w-full border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none transition"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Минимум 6 символа"
+              placeholder="Минимум 8 символа"
             />
           </div>
 
