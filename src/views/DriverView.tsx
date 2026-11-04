@@ -17,16 +17,16 @@
  */
 
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CircleMarker, MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CircleMarker, MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
 import { Client, Driver, ScheduleItem } from '../types';
-import { getClients, getClientsByDriver, updateClientLastCheckIn, updateClientSignatures } from '../services/clientService';
+import { getClientsByDriver, updateClientLastCheckIn, updateClientNote, updateClientSignatures } from '../services/clientService';
 import { getScheduleItems } from '../services/scheduleService';
 import { addIncident } from '../services/incidentService';
 import IncidentReporter from '../IncidentReporter';
 import DriverRoute, { DriverVisit as DriverVisitCard } from '../components/DriverRoute';
 import SignatureModal from '../components/SignatureModal';
+import AccessNoteModal from '../components/AccessNoteModal';
 import {completeDelivery} from '../services/deliveryService';
 import { startShift, endShift } from '../services/driverStatsService';
 import { getFriendlyErrorMessage } from '../services/authService';
@@ -34,6 +34,17 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { WifiOff, CloudOff, Wifi } from 'lucide-react';
 import { useNotification } from '../components/NotificationProvider';
 import emailjs from '@emailjs/browser';
+import { EMAILJS } from '../config';
+import { haversineKm } from '../utils/geo';
+import { resolveSosRecipient } from '../utils/sos';
+import { optimizeStops } from '../utils/route';
+import { commitWithOfflineGrace } from '../utils/offline';
+import { usePendingSync } from '../hooks/usePendingSync';
+import { getStoredShift, saveShiftToStorage, clearShiftFromStorage } from '../utils/shiftStorage';
+import { formatDuration, isSameDay, isTomorrow, isAfterTomorrow } from '../utils/dates';
+import { renderLastCheckInStatus } from '../components/CheckInStatus';
+import { MapBoundsController, pendingMarkerIcon, deliveredMarkerIcon } from '../components/DriverMapParts';
+import { geocodeAddress } from '../services/geocodingService';
 
 type DriverVisit = {
   client: Client;
@@ -43,224 +54,7 @@ type DriverVisit = {
   distanceFromPreviousKm?: number | null;
 };
 
-type ShiftData = {
-  isActive: boolean;
-  startTime: string | null;
-  deliveredCount: number;
-};
-
-const SHIFT_STORAGE_KEY = 'careconnect_driver_shift';
-
-const getStoredShift = (): ShiftData | null => {
-  try {
-    const stored = localStorage.getItem(SHIFT_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : null;
-  } catch {
-    return null;
-  }
-};
-
-const saveShiftToStorage = (data: ShiftData) => {
-  try {
-    localStorage.setItem(SHIFT_STORAGE_KEY, JSON.stringify(data));
-  } catch (err) {
-    console.error('Грешка при запис на данните за смяната в локалното хранилище:', err);
-  }
-};
-
-const clearShiftFromStorage = () => {
-  try {
-    localStorage.removeItem(SHIFT_STORAGE_KEY);
-  } catch (err) {
-    console.error('Грешка при изчистване на данните за смяната от локалното хранилище:', err);
-  }
-};
-
-const formatDuration = (startTime: string): string => {
-  const start = new Date(startTime);
-  const now = new Date();
-  const diffMs = now.getTime() - start.getTime();
-  const hours = Math.floor(diffMs / (1000 * 60 * 60));
-  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-  return `${hours}ч ${minutes}мин`;
-};
-
-const startOfDay = (date: Date) => {
-  const normalized = new Date(date);
-  normalized.setHours(0, 0, 0, 0);
-  return normalized;
-};
-
-const isSameDay = (d1: Date, d2: Date) => startOfDay(d1).getTime() === startOfDay(d2).getTime();
-
-const isTomorrow = (date: Date) => {
-  const tomorrow = startOfDay(new Date());
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return isSameDay(date, tomorrow);
-};
-
-const isAfterTomorrow = (date: Date) => {
-  const dayAfterTomorrow = startOfDay(new Date());
-  dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
-  return date.getTime() >= dayAfterTomorrow.getTime();
-};
-
-const renderLastCheckInStatus = (lastCheckIn: string | undefined) => {
-  const formatDate = (value: string) => {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return value;
-    }
-
-    return date.toLocaleString('bg-BG', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  if (!lastCheckIn) {
-    return (
-      <span className="inline-flex items-center gap-2 text-sm font-medium text-amber-500">
-        <span className="h-2 w-2 rounded-full bg-amber-500" />
-        Няма отчет за посещение
-      </span>
-    );
-  }
-
-  const normalized = lastCheckIn.trim();
-  const normalizedUpper = normalized.toUpperCase();
-
-  const renderIncidentStatus = (payload: string) => {
-    const trimmed = payload.trim();
-    const isoMatch = trimmed.match(/\d{4}-\d{2}-\d{2}T[^\s]+/);
-    const timestamp = isoMatch ? isoMatch[0] : '';
-    const incidentType = isoMatch ? trimmed.replace(timestamp, '').trim() : trimmed;
-    const formattedDate = timestamp ? formatDate(timestamp) : 'неизвестно време';
-
-    return (
-      <span className="inline-flex items-center gap-2 text-sm font-semibold text-red-500">
-        <span className="h-2 w-2 rounded-full bg-red-500" />
-        Сигнал: {incidentType || 'Непознат тип'} ({formattedDate})
-      </span>
-    );
-  };
-
-  if (normalizedUpper.startsWith('INCIDENT:')) {
-    const payload = normalized.slice(normalizedUpper.indexOf('INCIDENT:') + 'INCIDENT:'.length);
-    return renderIncidentStatus(payload);
-  }
-
-  const isLegacySos = normalizedUpper.startsWith('SOS ');
-  const printableValue = isLegacySos ? normalized.replace(/^SOS\s+/i, '') : normalized;
-  const formatted = formatDate(printableValue);
-
-  if (isLegacySos) {
-    return (
-      <span className="inline-flex items-center gap-2 text-sm font-semibold text-red-500">
-        <span className="h-2 w-2 rounded-full bg-red-500" />
-        Сигнал: SOS ({formatted})
-      </span>
-    );
-  }
-
-  return (
-    <span className="inline-flex items-center gap-2 text-sm font-medium text-emerald-500">
-      <span className="h-2 w-2 rounded-full bg-emerald-500" />
-      Последен отчет: {formatted}
-    </span>
-  );
-};
-
-const arcGisMarkerShadow =
-  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png';
-const pendingMarkerIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
-  shadowUrl: arcGisMarkerShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
-const deliveredMarkerIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
-  shadowUrl: arcGisMarkerShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
-
-
-function MapBoundsController({
-  coordinates,
-  fallbackCenter,
-  driverPosition
-}: {
-  coordinates: Array<{ lat: number; lng: number }>;
-  fallbackCenter: { lat: number; lng: number };
-  driverPosition: { lat: number; lng: number } | null;
-}) {
-  const map = useMap();
-  const hasCenteredOnDriver = useRef(false);
-
-  useEffect(() => {
-    if (driverPosition && !hasCenteredOnDriver.current) {
-      map.setView([driverPosition.lat, driverPosition.lng], 13);
-      hasCenteredOnDriver.current = true;
-    }
-
-    if (coordinates.length === 0) {
-      const center = driverPosition ?? fallbackCenter;
-      map.setView([center.lat, center.lng], 12);
-      return;
-    }
-
-    const boundsPoints = [
-      ...coordinates.map(coord => [coord.lat, coord.lng] as [number, number]),
-      ...(driverPosition ? [[driverPosition.lat, driverPosition.lng] as [number, number]] : [])
-    ];
-    const bounds = L.latLngBounds(boundsPoints as L.LatLngBoundsLiteral);
-    map.fitBounds(bounds, { padding: [30, 30] });
-  }, [coordinates, fallbackCenter, map, driverPosition]);
-
-  return null;
-}
-
-const geocodeAddress = async (address: string) => {
-  const url = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&singleLine=${encodeURIComponent(
-    address
-  )}&countryCode=BGR&maxLocations=1`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    return null;
-  }
-  const payload = (await response.json()) as {
-    candidates?: Array<{ location?: { x: number; y: number } }>;
-  };
-  const candidate = payload.candidates?.[0];
-  const location = candidate?.location;
-  if (!location) {
-    return null;
-  }
-  return { lat: location.y, lng: location.x };
-};
-
-const calculateDistance = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
-  const toRad = (value: number) => (value * Math.PI) / 180;
-  const earthRadiusKm = 6371;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-
-  const sinLat = Math.sin(dLat / 2);
-  const sinLng = Math.sin(dLng / 2);
-  const aVal = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
-  const cVal = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
-  return earthRadiusKm * cVal;
-};
+const calculateDistance = haversineKm;
 
 const getAddressKey = (address: string) => address.trim();
 
@@ -280,11 +74,15 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
   const [isLocationLoading, setIsLocationLoading] = useState(true);
   const isOnline = useOnlineStatus();
   const { showNotification } = useNotification();
+  const { queuedCount, markQueued } = usePendingSync(isOnline);
 
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
 
   const [isIncidentModalOpen, setIsIncidentModalOpen] = useState(false);
   const [incidentClient, setIncidentClient] = useState<Client | null>(null);
+
+  const [noteClient, setNoteClient] = useState<Client | null>(null);
+  const [isNoteSaving, setIsNoteSaving] = useState(false);
 
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
   const [signatureClient, setSignatureClient] = useState<Client | null>(null);
@@ -322,12 +120,12 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
 
   const fetchSchedule = useCallback(async () => {
     try {
-      const data = await getScheduleItems();
+      const data = await getScheduleItems(currentDriver.id);
       setScheduleItems(data);
     } catch (err) {
       console.error('Неуспешно зареждане на графика.', err);
     }
-  }, []);
+  }, [currentDriver.id]);
 
   useEffect(() => {
     void fetchSchedule();
@@ -340,7 +138,7 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
       setDriverClientsLoading(true);
       setDriverClientsError(null);
       try {
-        const data = await getClients();
+        const data = await getClientsByDriver(currentDriver.id);
         if (isMounted) {
           setDriverClients(data);
         }
@@ -522,8 +320,24 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
       return { ...visit, coords };
     });
 
-    // Keep original order (no sequenceNumber available on ScheduleItem)
-    const sorted = visitsWithCoords;
+    // Pending stops are re-ordered to shorten the trip (nearest-neighbour + 2-opt);
+    // finished stops follow in their original order.
+    const isDone = (visit: (typeof visitsWithCoords)[number]) =>
+      Boolean(
+        visit.client.clientSignature ||
+          visit.client.lastSignature ||
+          visit.client.driverSignature ||
+          visit.client.lastCheckIn?.trim()
+      );
+    const pending = visitsWithCoords.filter(visit => !isDone(visit));
+    const finished = visitsWithCoords.filter(isDone);
+    const sorted = [
+      ...optimizeStops(
+        currentPosition,
+        pending.map(visit => ({ item: visit, coords: visit.coords }))
+      ),
+      ...finished
+    ];
 
     // Calculate distances from previous point (starting from driver's current position)
     let previousCoords = currentPosition;
@@ -597,14 +411,12 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
       const targetClient = driverClients.find(c => c.id === clientId);
       const clientCoords = geoCache[getAddressKey(targetClient?.address || '')];
 
-      await updateClientSignatures(
+      const writes = Promise.all([updateClientSignatures(
         clientId,
         driverSig,
         clientSig,
         'Доставено и подписано от двете страни'
-      );
-
-      await completeDelivery({
+      ), completeDelivery({
         clientId: clientId,
         clientName: targetClient?.name || '---',
         egn: targetClient?.egn || 'N/A',
@@ -617,12 +429,26 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         mealCount: Number((targetClient as any)?.mealCount) || 1,
         driverSignature: driverSig, 
         clientSignature: clientSig  
-      } as any);
+      } as any)]);
 
-      console.log('Delivery history record successfully created for client:', clientId);
+      const outcome = await commitWithOfflineGrace(writes, {
+        onLateError: error => console.error('Офлайн записът беше отхвърлен от сървъра.', error)
+      });
 
-      const refreshed = await getClientsByDriver(currentDriver.id);
-      setDriverClients(refreshed);
+      if (outcome === 'queued') {
+        markQueued();
+        showNotification('Няма връзка: доставката е запазена и ще се синхронизира автоматично.', 'warning');
+        setDriverClients(prev =>
+          prev.map(c =>
+            c.id === clientId
+              ? { ...c, driverSignature: driverSig, clientSignature: clientSig, lastSignature: clientSig, lastCheckIn: 'Доставено и подписано от двете страни' }
+              : c
+          )
+        );
+      } else {
+        const refreshed = await getClientsByDriver(currentDriver.id);
+        setDriverClients(refreshed);
+      }
 
     } catch (err: any) {
       console.error("Грешка при финализиране на доставка:", err);
@@ -630,6 +456,22 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
       setDriverClientsError(friendlyMessage);
     } finally {
       setDriverActionClientId(null);
+    }
+  };
+
+  const handleSaveNote = async (note: string) => {
+    if (!noteClient) return;
+    setIsNoteSaving(true);
+    try {
+      const outcome = await commitWithOfflineGrace(updateClientNote(noteClient.id, note, noteClient.registryId));
+      if (outcome === 'queued') markQueued();
+      setDriverClients(prev => prev.map(c => (c.id === noteClient.id ? { ...c, notes: note.trim() } : c)));
+      showNotification(outcome === 'queued' ? 'Бележката е запазена офлайн и ще се синхронизира.' : 'Бележката е запазена за следващите посещения.', outcome === 'queued' ? 'warning' : 'success');
+      setNoteClient(null);
+    } catch (err: any) {
+      showNotification(getFriendlyErrorMessage(err.code || err.message), 'error');
+    } finally {
+      setIsNoteSaving(false);
     }
   };
 
@@ -688,15 +530,15 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
         const incidentTimestamp = new Date().toISOString();
 
         // Record the incident
-        await addIncident({
+        const writes = Promise.all([addIncident({
           clientId: incidentClient.id,
           driverId: currentDriver.id,
           type: incidentType,
           description
-        });
+        }),
 
         // Log delivery as an issue in history
-        await completeDelivery({
+        completeDelivery({
           clientId: incidentClient.id,
           clientName: incidentClient.name || '---',
           egn: incidentClient?.egn || 'N/A',
@@ -710,21 +552,19 @@ export default function DriverView({ userEmail, currentDriver, onLogout }: Drive
           status: 'issue',
           issueType: incidentType,
           issueDescription: description
-        } as any);
+        } as any),
 
         // Update client status for the day
-        await updateClientLastCheckIn(
+        updateClientLastCheckIn(
           incidentClient.id,
           `INCIDENT: ${incidentType} ${incidentTimestamp}`
-        );
+        )]);
+
+        const outcome = await commitWithOfflineGrace(writes);
+        if (outcome === 'queued') markQueued();
 
         // Send SOS email to the admin who assigned this task
-const todaysScheduleForClient = scheduleItems.find(item => 
-  item.clientId === incidentClient.id && 
-  item.driverId === currentDriver.id
-);
-
-const targetAdminEmail = todaysScheduleForClient?.assignedByAdminEmail;
+const targetAdminEmail = resolveSosRecipient(scheduleItems, incidentClient.id, currentDriver.id);
 
 if (targetAdminEmail) {
   const templateParams = {
@@ -739,21 +579,21 @@ if (targetAdminEmail) {
 
   try {
     await emailjs.send(
-      'service_dkng7ol', 
-      'template_o1iokwt',
+      EMAILJS.serviceId,
+      EMAILJS.sosTemplateId,
       templateParams,
-      'ikmstn4Jj0VVM1gWD'
+      EMAILJS.publicKey
     );
     console.log("✅ SOS Имейлът до админа (" + targetAdminEmail + ") е изпратен успешно!");
   } catch (emailErr) {
     console.error("❌ Грешка при изпращане на имейл чрез EmailJS:", emailErr);
   }
 } else {
-  console.warn(`⚠️ Не е намерен админ имейл в обекта за клиент: ${incidentClient.name}. Обектът от базата е:`, todaysScheduleForClient);
+  console.warn('Не е намерен имейл на диспечера за този клиент.');
 }
 
         await handleIncidentReportSuccess();
-        showNotification('Сигналът е изпратен успешно!', 'success');
+        showNotification(outcome === 'queued' ? 'Сигналът е запазен офлайн и ще бъде изпратен при връзка.' : 'Сигналът е изпратен успешно!', outcome === 'queued' ? 'warning' : 'success');
         handleCloseIncidentModal();
       } catch (err: any) {
         console.error('Грешка при изпращане на сигнал:', err);
@@ -761,7 +601,7 @@ if (targetAdminEmail) {
         showNotification(friendlyMessage, 'error');
       }
     },
-    [incidentClient, currentDriver?.id, currentDriver?.name, handleIncidentReportSuccess, isShiftActive, currentPosition, geoCache, scheduleItems]
+    [incidentClient, markQueued, currentDriver?.id, currentDriver?.name, handleIncidentReportSuccess, isShiftActive, currentPosition, geoCache, scheduleItems]
   );
 
   const handleStartShift = async () => { 
@@ -867,6 +707,18 @@ if (targetAdminEmail) {
       </div>
     )}
     
+    {isOnline && queuedCount > 0 && (
+      <div className="fixed top-0 left-0 right-0 z-[1000] bg-sky-600 text-white px-4 py-2 flex items-center justify-center gap-3 shadow-2xl">
+        <CloudOff className="w-4 h-4 animate-pulse" />
+        <span className="text-[10px] font-black uppercase tracking-widest">Синхронизиране на офлайн промени...</span>
+      </div>
+    )}
+    {!isOnline && queuedCount > 0 && (
+      <div className="fixed bottom-24 left-1/2 z-[1000] -translate-x-1/2 rounded-full bg-slate-800 px-4 py-2 text-xs font-bold text-amber-200 ring-1 ring-amber-400/50">
+        {queuedCount} {queuedCount === 1 ? 'промяна чака' : 'промени чакат'} за синхронизация
+      </div>
+    )}
+
     <section className={`mx-auto flex h-screen max-w-lg flex-col px-4 pb-6 transition-all duration-300 ${!isOnline ? 'pt-20' : 'pt-10'}`}>
       <header className="mb-6">
           <div className="flex items-center justify-between">
@@ -989,6 +841,7 @@ if (targetAdminEmail) {
                 driverActionClientId={driverActionClientId}
                 onCheckIn={client => client && handleOpenSignatureModal(client)}
                 onIncident={client => handleOpenIncident(client)}
+                onEditNote={client => setNoteClient(client)}
                 renderLastCheckInStatus={renderLastCheckInStatus}
                 isShiftActive={isShiftActive}
               />
@@ -1175,6 +1028,12 @@ if (targetAdminEmail) {
         />
       ) : null}
 
+      <AccessNoteModal
+        client={noteClient}
+        isSaving={isNoteSaving}
+        onSave={note => void handleSaveNote(note)}
+        onClose={() => setNoteClient(null)}
+      />
       <SignatureModal
         isOpen={isSignatureModalOpen}
         client={signatureClient}

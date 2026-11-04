@@ -23,16 +23,24 @@
  */
 
 import 'leaflet/dist/leaflet.css';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, lazy, Suspense, useEffect, useState } from 'react';
 import { Driver } from './types';
-import { getDriverByEmail } from './services/driverService';
+import { getDriverById } from './services/driverService';
 import { FirebaseUser, getFriendlyErrorMessage, login, logout, subscribeToAuthState } from './services/authService';
-import AdminDashboard from './views/AdminDashboard';
-import DriverView from './views/DriverView';
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
-import ActivateAccount from './views/activateAccount';
 import { Mail, Lock, LogIn, ShieldCheck, AlertCircle, LayoutDashboard, Truck, ClipboardList } from 'lucide-react';
 import ProtectedRoute from './components/ProtectedRoute';
+
+// Each role only downloads the code it needs.
+const AdminDashboard = lazy(() => import('./views/AdminDashboard'));
+const DriverView = lazy(() => import('./views/DriverView'));
+const ActivateAccount = lazy(() => import('./views/activateAccount'));
+
+const PageLoader = () => (
+  <main className="flex min-h-screen items-center justify-center bg-slate-950">
+    <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+  </main>
+);
 
 function App() {
   const navigate = useNavigate();
@@ -71,9 +79,9 @@ function App() {
   // Load driver profile when user has DRIVER role
   useEffect(() => {
     const loadDriverProfile = async () => {
-      if (user && user.role === 'DRIVER' && user.email) {
+      if (user && user.role === 'DRIVER' && user.driverId) {
         try {
-          const profile = await getDriverByEmail(user.email);
+          const profile = await getDriverById(user.driverId);
           setCurrentDriver(profile);
         } catch (err) {
           console.error("Грешка при зареждане на шофьор:", err);
@@ -125,6 +133,7 @@ function App() {
   const labelClasses = "flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1 mb-2";
 
   return (
+    <Suspense fallback={<PageLoader />}>
     <Routes>
       <Route path="/activate" element={<ActivateAccount />} />
       
@@ -223,6 +232,7 @@ function App() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 

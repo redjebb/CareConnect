@@ -1,79 +1,194 @@
 rules_version = '2';
+
+// CareConnect security model
+// ---------------------------------------------------------------------------
+// Every signed-in user must own a profile document users/{uid}. That document
+// is the single source of truth for authorization (role + driverId) and it
+// can only be created in two ways:
+//   1. a MASTER_ADMIN writes it, or
+//   2. the invited person claims it with the one-time token that was e-mailed
+//      to them (invitations/{email}.token). The token is never readable by
+//      anyone except staff, so knowing an e-mail address is not enough.
+// All other collections derive their permissions from that role.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isAuthenticated() {
+    // ---------------------------------------------------------------- helpers
+    function signedIn() {
       return request.auth != null;
     }
 
-    function isAnyAdmin() {
-      return isAuthenticated();
+    function authEmail() {
+      return request.auth.token.email.lower();
     }
 
-    function isMasterAdmin() {
-      return isAuthenticated() && 
-             (request.auth.token.email.lower() == "redjebtudjar@gmail.com");
+    function profilePath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
     }
 
-    // 1. USERS 
-    match /users/{userId} {
-      allow read, create, update: if isAuthenticated() && request.auth.uid == userId;
-      // Master Admin има пълен достъп до всички
-      allow read, write: if isMasterAdmin();
+    function role() {
+      return signedIn() && exists(profilePath()) ? get(profilePath()).data.role : 'NONE';
     }
 
-    // 2. CLIENTS
-    match /clients/{clientId} {
-      allow read: if isAuthenticated();
-      allow create, delete: if isAuthenticated();
-      allow update: if isAuthenticated();
+    // Bootstrap account: kept so the owner can never be locked out.
+    function isBootstrapMaster() {
+      return signedIn() && request.auth.token.email == 'redjebtudjar@gmail.com';
     }
 
-    // 3. CLIENTS_REGISTRY
-    match /clients_registry/{clientId} {
-      allow read, write: if isAnyAdmin();
+    function isMaster() {
+      return isBootstrapMaster() || role() == 'MASTER_ADMIN';
     }
 
-    // 4. DRIVERS 
-    match /drivers/{driverId} {
-      allow read: if isAuthenticated();
-      allow create, delete: if isMasterAdmin() || isAuthenticated();
-      allow update: if isAuthenticated() || resource.data.status == 'pending';
+    function isStaff() {
+      return isMaster() || role() == 'MANAGER';
     }
 
-    // 5. SCHEDULE & SHIFTS
-    match /schedule/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isAnyAdmin();
+    function isDriver() {
+      return role() == 'DRIVER';
     }
 
-    match /shifts/{shiftId} {
-      allow read, write: if isAuthenticated();
+    function myDriverId() {
+      return isDriver() ? get(profilePath()).data.get('driverId', '') : '';
     }
 
-    // 6. INCIDENTS 
-    match /incidents/{incidentId} {
-      allow create, read: if isAuthenticated();
-      allow update, delete: if isAnyAdmin();
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
     }
 
-    // 7. DELIVERY_HISTORY 
-    match /deliveryHistory/{docId} {
-      allow read, write: if isAuthenticated();
+    function invitePath() {
+      return /databases/$(database)/documents/invitations/$(authEmail());
     }
 
-    // 8. INVITATIONS 
-    match /invitations/{invitationId} {
-      allow read: if true; 
-      allow update: if true; 
-      allow create, delete: if isAuthenticated();
+    // The invited person proves ownership of the invitation with its token.
+    function validClaim(d) {
+      return exists(invitePath())
+        && get(invitePath()).data.status == 'pending'
+        && d.keys().hasOnly(['uid', 'email', 'role', 'driverId', 'inviteToken', 'createdAt'])
+        && d.uid == request.auth.uid
+        && d.email.lower() == authEmail()
+        && d.role in ['DRIVER', 'MANAGER']
+        && d.role == get(invitePath()).data.role
+        && d.inviteToken == get(invitePath()).data.token
+        && d.get('driverId', '') == get(invitePath()).data.get('driverId', '');
     }
 
-    // 9. ADMINS 
+    // Invitee may flip their own pending record to active, nothing else.
+    function isSelfActivation() {
+      return signedIn()
+        && role() in ['DRIVER', 'MANAGER']
+        && resource.data.email.lower() == authEmail()
+        && changedKeys().hasOnly(['status', 'uid'])
+        && request.resource.data.status == 'active'
+        && request.resource.data.get('uid', '') == request.auth.uid;
+    }
+
+    // ------------------------------------------------------------------ users
+    match /users/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isStaff());
+      allow list: if isStaff();
+      allow create: if isMaster()
+        || (signedIn() && request.auth.uid == uid && validClaim(request.resource.data));
+      allow update, delete: if isMaster();
+    }
+
+    // ------------------------------------------------------------ invitations
+    match /invitations/{inviteId} {
+      // The token inside must never be readable by the invitee.
+      allow get: if isStaff();
+      allow list: if isStaff();
+      allow create: if isStaff()
+        && inviteId == request.resource.data.email.lower()
+        && request.resource.data.role in ['DRIVER', 'MANAGER']
+        && (request.resource.data.role == 'DRIVER' || isMaster());
+      allow update: if isStaff()
+        || (signedIn()
+            && inviteId == authEmail()
+            && resource.data.status == 'pending'
+            && changedKeys().hasOnly(['status', 'activatedAt'])
+            && request.resource.data.status == 'accepted');
+      allow delete: if isStaff();
+    }
+
+    // ----------------------------------------------------------------- admins
     match /admins/{adminId} {
-      allow read: if isAuthenticated();
-      allow update: if isAuthenticated() || resource.data.status == 'pending';
-      allow create, delete: if isMasterAdmin();
+      allow read: if isStaff();
+      allow create, delete: if isMaster();
+      allow update: if isMaster() || isSelfActivation();
+    }
+
+    // ---------------------------------------------------------------- drivers
+    match /drivers/{driverId} {
+      allow get: if isStaff() || (isDriver() && driverId == myDriverId());
+      allow list: if isStaff();
+      allow create, delete: if isStaff();
+      allow update: if isStaff() || isSelfActivation();
+    }
+
+    // ---------------------------------------------------------------- clients
+    // One document per planned visit. Drivers only ever see their own visits.
+    match /clients/{clientId} {
+      allow read: if isStaff()
+        || (isDriver() && resource.data.assignedDriverId == myDriverId());
+      allow create, delete: if isStaff();
+      allow update: if isStaff()
+        || (isDriver()
+            && resource.data.assignedDriverId == myDriverId()
+            && changedKeys().hasOnly(['driverSignature', 'clientSignature', 'lastSignature', 'lastCheckIn', 'notes'])
+            && request.resource.data.get('notes', '').size() <= 500);
+    }
+
+    // Registry holds personal data (EGN) -> staff only. Drivers may only
+    // refresh the persistent access note of a person they just served.
+    match /clients_registry/{entryId} {
+      allow read, create, delete: if isStaff();
+      allow update: if isStaff()
+        || (isDriver()
+            && changedKeys().hasOnly(['notes', 'notesUpdatedAt'])
+            && request.resource.data.notes is string
+            && request.resource.data.notes.size() <= 500);
+    }
+
+    // --------------------------------------------------------------- schedule
+    match /schedule/{docId} {
+      allow read: if isStaff()
+        || (isDriver() && resource.data.driverId == myDriverId());
+      allow write: if isStaff();
+    }
+
+    // ----------------------------------------------------------------- shifts
+    match /shifts/{shiftId} {
+      allow read: if isStaff()
+        || (isDriver() && resource.data.driverId == myDriverId());
+      allow create: if isDriver()
+        && request.resource.data.driverId == myDriverId()
+        && request.resource.data.status == 'active';
+      allow update: if isStaff()
+        || (isDriver()
+            && resource.data.driverId == myDriverId()
+            && changedKeys().hasOnly(['endTime', 'status']));
+      allow delete: if isStaff();
+    }
+
+    // -------------------------------------------------------- deliveryHistory
+    match /deliveryHistory/{docId} {
+      allow read: if isStaff()
+        || (isDriver() && resource.data.driverId == myDriverId());
+      allow create: if isDriver() && request.resource.data.driverId == myDriverId();
+      allow update, delete: if isStaff();
+    }
+
+    // -------------------------------------------------------------- incidents
+    match /incidents/{incidentId} {
+      allow read: if isStaff()
+        || (isDriver() && resource.data.driverId == myDriverId());
+      allow create: if isStaff()
+        || (isDriver() && request.resource.data.driverId == myDriverId());
+      allow update, delete: if isStaff();
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

@@ -17,7 +17,7 @@
  */
 
 
-import { addDoc, collection, deleteDoc, doc, getDocs, query, where, writeBatch } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 import { Driver } from '../types';
 
@@ -27,9 +27,11 @@ export async function addDriver(driver: Omit<Driver, 'id'>): Promise<string> {
   const { name, email, phone, routeArea } = driver;
   const docRef = await addDoc(driversCollection, {
     name,
-    email,
+    email: email.trim().toLowerCase(),
     phone,
-    routeArea
+    routeArea,
+    status: driver.status ?? 'pending',
+    role: 'DRIVER'
   });
   return docRef.id;
 }
@@ -69,12 +71,7 @@ export async function deleteDriver(id: string): Promise<void> {
     });
 
     if (driverData && driverData.email) {
-      const invQuery = query(collection(db, 'invitations'), where('email', '==', driverData.email));
-      const invSnapshot = await getDocs(invQuery);
-      invSnapshot.forEach((docSnap) => {
-        batch.delete(docSnap.ref);
-      });
-      console.log(`🧹 Изтрита покана за: ${driverData.email}`);
+      batch.delete(doc(db, 'invitations', String(driverData.email).trim().toLowerCase()));
     }
 
     await batch.commit();
@@ -86,19 +83,10 @@ export async function deleteDriver(id: string): Promise<void> {
   }
 }
 
-export async function getDriverByEmail(email: string): Promise<Driver | null> {
-  const driverQuery = query(driversCollection, where('email', '==', email));
-  const snapshot = await getDocs(driverQuery);
-
-  if (snapshot.empty) {
+export async function getDriverById(id: string): Promise<Driver | null> {
+  const snapshot = await getDoc(doc(driversCollection, id));
+  if (!snapshot.exists()) {
     return null;
   }
-
-  const docSnapshot = snapshot.docs[0];
-  const data = docSnapshot.data() as Omit<Driver, 'id'>;
-
-  return {
-    id: docSnapshot.id,
-    ...data
-  };
+  return { id: snapshot.id, ...(snapshot.data() as Omit<Driver, 'id'>) };
 }

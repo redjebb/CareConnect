@@ -17,10 +17,8 @@
  */
 
 
-import { collection, addDoc } from 'firebase/firestore';
-import { db } from '../services/firebase';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import emailjs from '@emailjs/browser';
+import { createInvitation, sendInvitationEmail } from '../services/invitationService';
 import { addClient, deleteClient, getClientHistory, getClients } from '../services/clientService';
 import { addScheduleItem, deleteScheduleByClient, getScheduleItems } from '../services/scheduleService';
 import { addDriver, deleteDriver, getDrivers } from '../services/driverService';
@@ -34,6 +32,7 @@ import {
 } from '../services/clientsRegistryService';
 import type { Client, ClientHistoryEntry, ClientRegistryEntry, Driver, Incident, ScheduleItem } from '../types';
 import { useNotification } from '../components/NotificationProvider';
+import { hasValidEgnChecksum, isValidEgn, isValidPhone } from '../utils/validation';
 
 type ClientWithSchedule = Client & { nextVisitDate?: string | null };
 
@@ -102,11 +101,8 @@ const fetchPhotonSuggestions = async (query: string) => {
 export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) {
   const { showNotification } = useNotification();
 
-  const isValidEgn = (egn: string) => /^\d{10}$/.test(egn.trim());
-  const isValidPhone = (phone: string) => /^\d{10}$/.test(phone.replace(/[\s\-]/g, ''));
-  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
-  const [currentView, setCurrentView] = useState<'clients' | 'drivers' | 'admins'>('clients');
+  const [currentView, setCurrentView] = useState<'clients' | 'drivers' | 'admins' | 'analytics'>('clients');
   const [clientManagementTab, setClientManagementTab] = useState<'registry' | 'daily'>('daily');
 
   const [clients, setClients] = useState<ClientWithSchedule[]>([]);
@@ -138,7 +134,8 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
     address: '',
     phone: '',
     defaultMealType: 'Стандартно меню',
-    defaultMealCount: '1'
+    defaultMealCount: '1',
+    notes: ''
   });
 
   const [registrySearch, setRegistrySearch] = useState('');
@@ -398,7 +395,8 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
       address: '',
       phone: '',
       defaultMealType: 'Стандартно меню',
-      defaultMealCount: '1'
+      defaultMealCount: '1',
+      notes: ''
     });
   };
 
@@ -420,6 +418,10 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
       return;
     }
 
+    if (!hasValidEgnChecksum(trimmedEgn)) {
+      showNotification('Внимание: ЕГН не премина проверката за контролна цифра. Записът е запазен.', 'warning');
+    }
+
     const existingWithSameEgn = registryEntries.find(
       entry => entry.egn.trim() === trimmedEgn && entry.id !== registryEditingId
     );
@@ -437,7 +439,8 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
         address: registryForm.address,
         phone: registryForm.phone,
         defaultMealType: registryForm.defaultMealType,
-        defaultMealCount: Math.max(1, Number(registryForm.defaultMealCount) || 1)
+        defaultMealCount: Math.max(1, Number(registryForm.defaultMealCount) || 1),
+        notes: registryForm.notes
       };
 
       if (registryEditingId) {
@@ -476,9 +479,12 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
       address: entry.address ?? '',
       phone: entry.phone ?? '',
       defaultMealType: entry.defaultMealType ?? 'Стандартно меню',
-      defaultMealCount: String(entry.defaultMealCount ?? 1)
+      defaultMealCount: String(entry.defaultMealCount ?? 1),
+      notes: entry.notes ?? ''
     });
   };
+
+  const refreshAll = () => Promise.all([fetchClients(), fetchScheduleItems(), fetchRegistryEntries()]);
 
   const handleRemoveRegistryEntry = async (entryId: string) => {
     if (!entryId) return;
@@ -538,7 +544,6 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
   };
 
   const handleOpenProfile = async (entry: ClientRegistryEntry) => {
-    console.log('Opening profile for:', entry);
 
     // Always open the modal immediately, even if history fetch fails.
     setProfileEntry(entry);
@@ -594,8 +599,18 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
       address: entry.address ?? '',
       phone: entry.phone ?? '',
       mealType: entry.defaultMealType ?? prev.mealType,
-      mealCount: String(entry.defaultMealCount ?? 1)
+      mealCount: String(entry.defaultMealCount ?? 1),
+      notes: entry.notes ?? ''
     }));
+  };
+
+  // Keeps the registry note in step with what the dispatcher typed for this visit.
+  const syncRegistryNote = async () => {
+    if (!selectedRegistryEntryId) return;
+    const entry = registryEntries.find(e => e.id === selectedRegistryEntryId);
+    if (entry && (entry.notes ?? '').trim() !== clientForm.notes.trim()) {
+      await updateRegistryEntry(entry.id, { notes: clientForm.notes });
+    }
   };
 
   const handleAddClient = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -637,6 +652,7 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
         address: clientForm.address,
         phone: clientForm.phone,
         notes: clientForm.notes,
+        ...(selectedRegistryEntryId ? { registryId: selectedRegistryEntryId } : {}),
         assignedDriverId: clientForm.assignedDriverId,
         mealType: trimmedMealType,
         mealCount: mealCountNumber,
@@ -649,6 +665,8 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
         date: clientForm.serviceDate,
         assignedByAdminEmail: currentAdminEmail
       });
+
+      await syncRegistryNote();
 
       setClientForm({
         egn: '',
@@ -720,6 +738,7 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
         address: clientForm.address,
         phone: clientForm.phone,
         notes: clientForm.notes,
+        ...(selectedRegistryEntryId ? { registryId: selectedRegistryEntryId } : {}),
         assignedDriverId: clientForm.assignedDriverId,
         mealType: trimmedMealType,
         mealCount: mealCountNumber,
@@ -732,6 +751,8 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
         date: nextDateValue,
         assignedByAdminEmail: currentAdminEmail
       });
+
+      await syncRegistryNote();
 
       setClientForm({
         egn: '',
@@ -813,27 +834,17 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
 
     setDriverSubmitting(true);
     try {
-      // Create driver record with pending status
-      await addDriver({ 
-        name: name.trim(), 
-        email: trimmedEmail, 
-        phone: phone.trim(), 
+      const driverId = await addDriver({
+        name: name.trim(),
+        email: trimmedEmail.toLowerCase(),
+        phone: phone.trim(),
         routeArea: combinedRoute,
         status: 'pending',
-        role: 'DRIVER' 
+        role: 'DRIVER'
       });
 
-      // Create invitation record
-      await addDoc(collection(db, 'invitations'), {
-        email: trimmedEmail,
-        role: 'driver',
-        status: 'pending', 
-        createdAt: new Date().toISOString()
-      });
-
-      // Send activation email via EmailJS
-      const activationUrl = `https://careconnect-d7bd7.web.app/activate?email=${encodeURIComponent(trimmedEmail)}`;
-      await emailjs.send('service_dkng7ol', 'template_picgzcg', { email: trimmedEmail, link: activationUrl }, 'ikmstn4Jj0VVM1gWD');
+      const activationUrl = await createInvitation({ email: trimmedEmail, role: 'DRIVER', driverId });
+      await sendInvitationEmail(trimmedEmail, activationUrl);
 
       setDriverForm({ name: '', email: '', phone: '', routeArea: '', selectedCity: '' });
       await fetchDrivers();
@@ -876,25 +887,15 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
 
   setAdminSubmitting(true);
   try {
-    // Create admin record with pending status
-    await addDoc(collection(db, 'admins'), { 
-      name: trimmedName, 
-      email: trimmedEmail, 
+    const adminId = await addAdmin({
+      name: trimmedName,
+      email: trimmedEmail.toLowerCase(),
       status: 'pending',
       role: 'MANAGER'
     });
 
-    // Create invitation record
-    await addDoc(collection(db, 'invitations'), {
-      email: trimmedEmail,
-      role: 'admin',
-      status: 'sent',
-      createdAt: new Date().toISOString()
-    });
-
-    // Send activation email via EmailJS
-    const activationUrl = `https://careconnect-d7bd7.web.app/activate?email=${encodeURIComponent(trimmedEmail)}`;
-    await emailjs.send('service_dkng7ol', 'template_picgzcg', { email: trimmedEmail, link: activationUrl }, 'ikmstn4Jj0VVM1gWD');
+    const activationUrl = await createInvitation({ email: trimmedEmail, role: 'MANAGER', adminId });
+    await sendInvitationEmail(trimmedEmail, activationUrl);
 
     setAdminForm({ name: '', email: '' });
     await fetchAdmins();
@@ -1008,6 +1009,7 @@ export function useAdminData(isMasterAdmin: boolean, currentAdminEmail: string) 
     handleSubmitRegistryEntry,
     handleEditRegistryEntry,
     handleRemoveRegistryEntry,
+    refreshAll,
     applyRegistrySelection,
     handleSelectRegistryAddressSuggestion,
 

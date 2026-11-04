@@ -25,11 +25,12 @@
   import AdminRegistryView from './AdminRegistryView';
   import UserProfileModal from '../components/UserProfileModal';
   import SignatureViewerModal from '../components/SignatureViewerModal';
-  import { collection, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+  import { collection, onSnapshot } from 'firebase/firestore';
   import { db } from '../services/firebase';
   import DriverProfileModal from '../components/DriverProfileModal'; 
   import { getFriendlyErrorMessage } from '../services/authService';
-  import { LogOut, LayoutDashboard, Users, Truck, ShieldCheck, Database, CalendarDays, FileText } from 'lucide-react';
+  import { LogOut, LayoutDashboard, Users, Truck, ShieldCheck, Database, CalendarDays, FileText, BarChart3 } from 'lucide-react';
+  import AnalyticsPanel from '../components/AnalyticsPanel';
   import type { Driver, ClientRegistryEntry } from '../types';
   import GlobalMonthlyReportModal from '../components/GlobalMonthlyReportModal';
 
@@ -72,7 +73,7 @@
       handleAddClient, handleAddClientForSelectedDate, clientsLoading, clientDeletingId, reportGenerating, handleGenerateMonthlyReport, handleDeleteClient,
       registryForm, registryEditingId, registrySubmitting, registryError, sortedRegistryEntries, registryLoading, registryDeletingId,
       registryAddressSuggestions, showRegistryAddressSuggestions, setShowRegistryAddressSuggestions,
-      handleSelectRegistryAddressSuggestion, handleRegistryInputChange, handleSubmitRegistryEntry, resetRegistryForm, handleEditRegistryEntry, handleRemoveRegistryEntry, handleOpenProfile,
+      handleSelectRegistryAddressSuggestion, handleRegistryInputChange, handleSubmitRegistryEntry, resetRegistryForm, handleEditRegistryEntry, handleRemoveRegistryEntry, refreshAll, handleOpenProfile,
       driversError, driverSubmitting, driverDeletingId, driverForm, handleDriverInputChange, handleDriverCityChange, handleAddDriver, handleDeleteDriver,
       admins, adminsLoading, adminsError, adminSubmitting, adminDeletingId, adminForm, handleAdminInputChange, handleAddAdmin, handleDeleteAdmin,
       profileSearch, setProfileSearch, isProfileSearchOpen, setIsProfileSearchOpen, profileSearchResults, handleSelectProfileSearch
@@ -80,21 +81,11 @@
 
     useEffect(() => {
       const unsubscribe = onSnapshot(collection(db, 'invitations'), (snapshot) => {
-        setInvitations(snapshot.docs.map(doc => doc.data()));
+        // Only expose what the UI needs; the activation token stays out of component state.
+        setInvitations(snapshot.docs.map(doc => ({ email: doc.data().email, role: doc.data().role, status: doc.data().status })));
       });
       return () => unsubscribe();
     }, []);
-
-    const sendInvite = async (email: string, role: 'driver' | 'manager') => {
-      const token = crypto.randomUUID();
-      await addDoc(collection(db, 'invitations'), {
-        email: email.trim(),
-        role: role,
-        token: token,
-        status: 'pending',
-        createdAt: serverTimestamp(),
-      });
-    };
 
     const handleGenerateOfficialReport = () => {
     setIsGlobalReportOpen(true);
@@ -103,12 +94,13 @@
     const handleQuickSchedule = (entry: ClientRegistryEntry) => {
       handleCloseProfile(); 
       setClientManagementTab('daily');
+      setSelectedRegistryEntryId(entry.id);
       setClientForm({
         egn: entry.egn,
         name: entry.name,
         address: entry.address,
         phone: entry.phone || '',
-        notes: '',
+        notes: entry.notes ?? '',
         assignedDriverId: '', 
         serviceDate: new Date().toISOString().split('T')[0], 
         mealType: entry.defaultMealType || 'Основно',
@@ -203,6 +195,14 @@
                   >
                     <Truck className="w-4 h-4" /> Шофьори
                   </button>
+                  <button
+                    onClick={() => setCurrentView('analytics')}
+                    className={`flex flex-1 lg:flex-none items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition-all ${
+                      currentView === 'analytics' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'
+                    }`}
+                  >
+                    <BarChart3 className="w-4 h-4" /> Аналитика
+                  </button>
                 </div>
 
                 {currentView === 'clients' && (
@@ -250,7 +250,6 @@
                     onSubmit={async (e) => {
                       e.preventDefault();
                       await handleAddAdmin(e);
-                      if (adminForm.email) await sendInvite(adminForm.email, 'manager');
                     }}
                     onDeleteAdmin={id => void handleDeleteAdmin(id)}
                   />
@@ -318,6 +317,8 @@
                 adminEmail={userEmail}
                 />
 
+                {currentView === 'analytics' && <AnalyticsPanel />}
+
                 {currentView === 'drivers' && (
                   <AdminDriversView
                     cityData={CITY_DATA}
@@ -334,7 +335,6 @@
                     onSubmit={async (e) => {
                       e.preventDefault();
                       await handleAddDriver(e);
-                      if (driverForm.email) await sendInvite(driverForm.email, 'driver');
                     }}
                     onDeleteDriver={id => void handleDeleteDriver(id)}
                   />
@@ -415,6 +415,7 @@
               isLoading={profileLoading}
               errorMessage={translatedProfileError}
               onClose={handleCloseProfile}
+              onErased={() => void refreshAll()}
             />
 
             <DriverProfileModal 

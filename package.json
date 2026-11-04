@@ -9,7 +9,13 @@
     "preview": "vite preview",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-careconnect \"vitest run --config vitest.rules.config.ts\"",
+    "demo": "firebase emulators:exec --only auth,firestore --project demo-careconnect \"node scripts/seed-demo.mjs && vite --mode demo\"",
+    "test:e2e": "playwright test",
+    "backup": "node scripts/backup.mjs",
+    "migrate:profiles": "node scripts/migrate-profiles.mjs",
+    "migrate:rehearse": "firebase emulators:exec --only auth,firestore --project demo-careconnect \"node scripts/legacy-seed.mjs && node scripts/migrate-profiles.mjs --apply && node scripts/migrate-profiles.mjs\""
   },
   "engines": {
     "node": ">=18.0.0",
@@ -31,6 +37,8 @@
     "react-signature-canvas": "^1.1.0-alpha.2"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@playwright/test": "^1.64.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/file-saver": "^2.0.7",
@@ -43,10 +51,13 @@
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.20",
     "esbuild": "^0.27.0",
+    "firebase-admin": "^14.5.0",
+    "firebase-tools": "^15.34.1",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
     "typescript": "^5.6.3",
     "vite": "^7.2.4",
+    "vite-plugin-pwa": "^2.0.0",
     "vitest": "^4.0.18"
   }
 }

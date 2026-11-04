@@ -10,7 +10,6 @@ build/
 
 # Firebase специфични файлове
 .firebase/
-firestore.indexes.json
 firebase-debug.log*
 firestore-debug.log*
 ui-debug.log*
@@ -31,3 +30,10 @@ Thumbs.db
 
 # Тестове
 /coverage
+test-results/
+playwright-report/
+firestore-debug.log
+ui-debug.log
+backups/
+service-account*.json
+*-firebase-adminsdk-*.json

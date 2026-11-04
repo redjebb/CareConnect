@@ -51,8 +51,9 @@ export async function getAdmins(): Promise<Admin[]> {
 export async function addAdmin(admin: Omit<Admin, 'id'>): Promise<string> {
   const payload = {
     name: admin.name.trim(),
-    email: admin.email.trim(),
-    status: admin.status || 'pending'
+    email: admin.email.trim().toLowerCase(),
+    status: admin.status || 'pending',
+    role: 'MANAGER'
   };
 
   const docRef = await addDoc(adminsCollection, payload);

@@ -12,6 +12,7 @@ export interface Client {
   lastSignature?: string;
   driverSignature?: string;
   clientSignature?: string;
+  registryId?: string;
 }
 
 export interface ClientHistoryEntry extends Client {
@@ -64,4 +65,7 @@ export interface ClientRegistryEntry {
   phone: string;
   defaultMealType: string;
   defaultMealCount: number;
+  // Persistent access instructions, e.g. "3rd floor, door on the right".
+  notes?: string;
+  notesUpdatedAt?: string;
 }

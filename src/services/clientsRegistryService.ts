@@ -1,6 +1,7 @@
 import { addDoc, collection, deleteDoc, doc, getDocs, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { ClientRegistryEntry } from '../types';
+import { MAX_NOTE_LENGTH } from '../config';
 
 const registryCollection = collection(db, 'clients_registry');
 
@@ -24,7 +25,8 @@ export async function addRegistryEntry(entry: Omit<ClientRegistryEntry, 'id'>) {
     address: entry.address.trim(),
     phone: entry.phone.trim(),
     defaultMealType: entry.defaultMealType.trim() || 'Стандартно меню',
-    defaultMealCount: Math.max(1, Number(entry.defaultMealCount) || 1)
+    defaultMealCount: Math.max(1, Number(entry.defaultMealCount) || 1),
+    notes: (entry.notes ?? '').trim().slice(0, MAX_NOTE_LENGTH)
   };
   await addDoc(registryCollection, payload);
 }
@@ -53,6 +55,11 @@ export async function updateRegistryEntry(
   }
   if (data.defaultMealCount !== undefined) {
     payload.defaultMealCount = Math.max(1, Number(data.defaultMealCount) || 1);
+  }
+
+  if (data.notes !== undefined) {
+    payload.notes = data.notes.trim().slice(0, MAX_NOTE_LENGTH);
+    payload.notesUpdatedAt = new Date().toISOString();
   }
 
   await updateDoc(registryDoc, payload);

@@ -26,7 +26,7 @@ node -v
 
 ### 2️⃣ Installation
 
-Open your terminal in the `proekt` directory and run:
+Open your terminal in the project directory and run:
 
 ```bash
 npm install
@@ -62,10 +62,28 @@ npm run build
 
 ### 5️⃣ Running Tests
 
-Verify business logic and security rules:
+Unit tests (routing, analytics, validation, offline logic):
 
 ```bash
 npm test
+```
+
+Firestore security-rules tests (needs Java 21, runs the Firestore emulator):
+
+```bash
+npm run test:rules
+```
+
+End-to-end browser tests (Chrome + emulators, seeded fake data):
+
+```bash
+npm run test:e2e
+```
+
+Run the whole app locally on emulators with demo accounts (no production data touched):
+
+```bash
+npm run demo   # master@demo.bg / manager@demo.bg / driver@demo.bg – password Demo12345!
 ```
 
 ---
@@ -97,17 +115,15 @@ npm test
 
 ## ✨ Key Features
 
-- **Real-time Sync**  
-  Instant updates across all devices.
+- **Persistent access notes** – "3rd floor, door on the right" follows every visit and is kept up to date by drivers.
+- **Route optimisation** – nearest-neighbour + 2-opt ordering from the driver's live position.
+- **Offline-first PWA** – installable, works without signal, shows a sync queue.
+- **Digital signatures & SOS** – Canvas signatures and instant e-mail alerts to the planning dispatcher.
+- **Analytics** – deliveries per day, success rate, driver performance, top issues, missed visits.
+- **GDPR tools** – per-person data export and full erasure.
+- **Least-privilege security** – role profiles, token-based invitations, 25 emulator-tested Firestore rules.
 
-- **Offline Support**  
-  Local caching and background synchronization.
-
-- **Digital Verification**  
-  Signature capture via Canvas API.
-
-- **Role-Based Access Control (RBAC)**  
-  Secure routing for Admin, Manager, and Driver roles.
+Documentation for the jury is in [`docs/`](docs/) (Bulgarian): project documentation, test evidence, defence script. Security and deployment notes: [`docs/SECURITY-AND-DEPLOY.md`](docs/SECURITY-AND-DEPLOY.md).
 
 ---
 

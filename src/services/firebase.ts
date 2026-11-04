@@ -18,8 +18,9 @@
 
 
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { connectAuthEmulator, getAuth } from 'firebase/auth';
 import { 
+  connectFirestoreEmulator,
   initializeFirestore, 
   persistentLocalCache, 
   persistentMultipleTabManager 
@@ -35,7 +36,10 @@ const firebaseConfig = {
   measurementId: 'G-8MWBWJ8LFV'
 };
 
-const app = initializeApp(firebaseConfig);
+const useEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
+
+// Emulators are seeded under the demo project id (see scripts/seed-demo.mjs).
+const app = initializeApp(useEmulators ? { ...firebaseConfig, projectId: 'demo-careconnect' } : firebaseConfig);
 
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
@@ -44,3 +48,10 @@ export const db = initializeFirestore(app, {
 });
 
 export const auth = getAuth(app);
+
+// `npm run demo` runs the whole app against local Firebase emulators with
+// seeded fake data, so nothing touches the production project.
+if (useEmulators) {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+}
